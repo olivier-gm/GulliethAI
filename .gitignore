@@ -1,0 +1,14 @@
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Variables de entorno y credenciales
+.env
+
+# Archivos de salida y caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+output/
