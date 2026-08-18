@@ -1,13 +1,17 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, session
 import threading
+import os
+import logging
+from dotenv import load_dotenv
 from form_processor import FormProcessor
 from algorythms import Document_process
 from IA import generate_essay_content, generate_introduction, generate_conclusion, validate_titles
-import os
+
+load_dotenv()
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
-app.secret_key = 'eduardoyoli07'  # Replace with your own secret key
-
+app.secret_key = os.getenv('SECRET_KEY', '7f8b9a2c3d4e5f608192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8')
 @app.route('/')
 def welcome():
     return render_template('main_page.html') 
@@ -41,8 +45,10 @@ def process_form_bach():
         random_code = '_' + Document_process.generate_random_code()
     docx_output = f'output/{head_title}{random_code}.docx'
     
+    university_name = form_data.get('u', '')
     Document_process.fill_placeholders(docx_output, input_doc, input_doc2, replacements,
-                                        introduccion, body, conclusion, head_title, 'bach')
+                                        introduccion, body, conclusion, head_title, 'bach',
+                                        university_name=university_name)
 
     session['file_generated'] = True
 
@@ -86,8 +92,10 @@ def process_form():
         # If the file exists, generate a random code and append it to the filename
         random_code = '_' + Document_process.generate_random_code()
     docx_output = f'output/{head_title}{random_code}.docx'
+    university_name = form_data.get('u', '')
     Document_process.fill_placeholders(docx_output, input_doc, input_doc2, replacements,
-                                        introduccion, body, conclusion, head_title, 'uni')
+                                        introduccion, body, conclusion, head_title, 'uni',
+                                        university_name=university_name)
 
     session['file_generated'] = True
 
@@ -113,8 +121,9 @@ def download_file(filename, filetype):
     file_path = f'output/{filename}.{filetype}'
     try:
         return send_file(file_path, as_attachment=True)
-    except:
-        return render_template('404.html')  # Replace with your error template name
+    except Exception as e:
+        logging.error('Error descargando archivo: %s', e)
+        return render_template('404.html')
 
 
 @app.errorhandler(404)

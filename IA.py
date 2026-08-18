@@ -1,43 +1,57 @@
 import os
+import logging
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from itertools import cycle
+import re
 
 load_dotenv()
+logger = logging.getLogger(__name__)
+
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+MODEL_NAME = "gemini-3.5-flash"
+
+# Shared safety settings — used by all generation functions
+SAFETY_SETTINGS = [
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+]
+
+
+def _make_config(*, temperature=0.4, max_output_tokens=1400):
+    """Crea un GenerateContentConfig reutilizable con safety settings compartidos."""
+    return types.GenerateContentConfig(
+        temperature=temperature,
+        top_p=0.95,
+        top_k=40,
+        max_output_tokens=max_output_tokens,
+        response_mime_type="text/plain",
+        safety_settings=SAFETY_SETTINGS,
+    )
 
 def generate_essay_content(title, subtitles):
 
-    config = types.GenerateContentConfig(
-        temperature=0.5,
-        top_p=0.95,
-        top_k=40,
-        max_output_tokens=15000,
-        response_mime_type="text/plain",
-        safety_settings=[
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-        ]
-    )
+    config = _make_config(temperature=0.5, max_output_tokens=16000)
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        config=config,
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            config=config,
         contents=[
   "input: Genera una investigacion estructurada detallada, utilizando subtitulos de ser necesario para una investigacion mas detallada, basandote en el titulo 'La celula'. el texto no debe tener un ultimo parrafo de conclusion sin importar que parezca incompleto asi que omite un subtitulo de **conclusion**. omite colocar el titulo principal al principio. La respuesta debe estar representada en una sola linea de texto con cada párrafo separado estrictamente por \n\n\n. ejemplo: \"concepto...\n\n\nSubtitulo1\n\n\n.....\n\n\nsubtitulo2\n\n\n....",
   "output: Las células son la unidad básica de la vida en todos los organismos vivos. Cada célula está compuesta por diferentes estructuras que realizan funciones específicas para mantener la vida. Estas estructuras incluyen la membrana plasmática, el citoplasma, el núcleo y los orgánulos.\n\n\nMembrana Plasmática:\n\n\nLa membrana plasmática es una estructura dinámica y compleja que desempeña un papel fundamental en la regulación del ambiente interno de la célula. Además de la bicapa de fosfolípidos y las proteínas incrustadas, también contiene glúcidos y colesterol, que contribuyen a su estabilidad y funcionalidad. Las proteínas de membrana cumplen diversas funciones, como el transporte de moléculas a través de la membrana, la transducción de señales y el reconocimiento celular. La fluidez de la membrana plasmática permite la movilidad de sus componentes, lo que es crucial para procesos como la endocitosis y la exocitosis.\n\n\nCitoplasma:\n\n\nEl citoplasma es una matriz gelatinosa que alberga numerosos orgánulos celulares y es el sitio donde ocurren múltiples procesos metabólicos. Además de agua, contiene iones, nutrientes, proteínas y moléculas orgánicas e inorgánicas necesarias para la supervivencia celular. Los filamentos de actina y microtúbulos presentes en el citoplasma proporcionan estructura y contribuyen al movimiento celular, el transporte intracelular y la división celular. La densidad y composición del citoplasma pueden variar según el tipo celular y las condiciones ambientales.\n\n\nNúcleo:\n\n\nEl núcleo celular es una estructura altamente organizada que alberga el material genético en forma de cromatina. La cromatina se compone de ADN, histonas y proteínas no histonas, y su organización varía según el estado de la célula (dividiéndose o en reposo). La envoltura nuclear separa el núcleo del citoplasma y contiene poros nucleares que regulan el intercambio de moléculas entre el núcleo y el citoplasma. Dentro del núcleo, se encuentran el nucleolo, donde se sintetizan los ribosomas, y diversas estructuras especializadas involucradas en la replicación y expresión del ADN.\n\n\nOrgánulos:\n\n\nLos orgánulos celulares son estructuras especializadas que desempeñan funciones específicas para mantener la homeostasis y realizar actividades metabólicas. Además de los mencionados, existen otros orgánulos como los peroxisomas (encargados de la detoxificación celular), los centriolos (involucrados en la división celular), y los cloroplastos (presentes en células vegetales y responsables de la fotosíntesis). La estructura y función de los orgánulos pueden variar según el tipo celular y el estado fisiológico.\n\n\nTipos de Células:\n\n\nLas células procariotas, como las bacterias y las arqueas, son organismos unicelulares con un diseño más simple que carecen de núcleo definido y orgánulos membranosos. En contraste, las células eucariotas, presentes en organismos multicelulares, tienen un núcleo delimitado por una membrana nuclear y diversos orgánulos encerrados en membranas. Esta distinción en la organización celular refleja diferencias evolutivas y funcionales entre los dos tipos de células.\n\n\nFunciones Celulares:\n\n\nEl metabolismo celular es un proceso fundamental para la vida que implica la captación, transformación y liberación de energía a partir de nutrientes. La reproducción celular asegura la continuidad de la vida mediante la división y proliferación de células hijas genéticamente idénticas (en el caso de la mitosis) o con variabilidad genética (en la meiosis). La comunicación celular permite la coordinación de actividades dentro de tejidos y órganos, así como respuestas adaptativas a estímulos ambientales. El transporte de sustancias asegura el intercambio de moléculas entre la célula y su entorno, manteniendo condiciones internas adecuadas para la supervivencia.\n\n\nCiclo Celular:\n\n\nEl ciclo celular es un proceso altamente regulado que consta de fases específicas que garantizan la duplicación precisa del material genético y la división ordenada de la célula. La interrupción del ciclo celular puede conducir a enfermedades como el cáncer, donde la regulación de la proliferación celular se ve alterada. La comprensión del ciclo celular es crucial para el desarrollo de tratamientos contra el cáncer y otras enfermedades relacionadas con la proliferación celular descontrolada.\n\n\nDiferenciación Celular:\n\n\nLa diferenciación celular es un proceso complejo que implica la activación selectiva de genes para dar lugar a células especializadas con funciones específicas. Esto permite la formación de tejidos y órganos con diferentes estructuras y funciones, esencial para el desarrollo y la homeostasis de organismos multicelulares. La diferenciación celular está influenciada por factores intrínsecos (como la expresión génica y la regulación epigenética) y extrínsecos (como las señales del microambiente celular).\n\n\nMuerte Celular:\n\n\nLa muerte celular es un proceso regulado que puede ocurrir de manera programada (apoptosis) o como resultado de daño celular irreversible (necrosis). La apoptosis es esencial para la eliminación de células no necesarias o dañadas durante el desarrollo embrionario, la homeostasis tisular y la respuesta inmune. En contraste, la necrosis es un proceso desordenado que generalmente conduce a la inflamación y el daño tisular. La comprensión de los mecanismos de muerte celular es fundamental para el desarrollo de terapias contra enfermedades relacionadas con la supervivencia celular alterada.\n\n\nInvestigación Celular:\n\n\nLa biología celular es un campo interdisciplinario que combina técnicas de biología molecular, bioquímica, genética, microscopía y bioinformática para investigar la estructura, función y comportamiento de las células. Las investigaciones en biología celular han llevado a importantes avances en medicina, biotecnología y ciencias básicas, incluyendo el desarrollo de terapias génicas, la ingeniería de tejidos y la comprensión de enfermedades genéticas y complejas. La continua innovación en técnicas experimentales y análisis de datos impulsa el progreso en este campo en constante evolución.",
@@ -82,41 +96,19 @@ def generate_essay_content(title, subtitles):
   f"input: Genera una investigacion estructurada detallada, utilizando subtitulos de ser necesario para una investigacion mas detallada, basandote en el titulo '{title}{subtitles}. el texto no debe tener un ultimo parrafo de conclusion sin importar que parezca incompleto asi que omite un subtitulo de **conclusion**. omite colocar el titulo principal al principio. La respuesta debe estar representada en una sola linea de texto con cada párrafo separado estrictamente por \n\n\n. ejemplo: \"concepto...\n\n\nSubtitulo1\n\n\n.....\n\n\nsubtitulo2\n\n\n....",
   "output: ",
 ])
-
-    return response.text
+        return re.sub(r'(?i)^output:?\s*', '', response.text).strip() if response.text else ''
+    except Exception as e:
+        logger.error('Error generando contenido del ensayo: %s', e)
+        return ''
 
 def generate_introduction(title, body):
 
-    # Create the model
-    config = types.GenerateContentConfig(
-        temperature=0.4,
-        top_p=0.95,
-        top_k=40,
-        max_output_tokens=1400,
-        response_mime_type="text/plain",
-        safety_settings=[
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-        ]
-    )
+    config = _make_config(temperature=0.4, max_output_tokens=4000)
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        config=config,
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            config=config,
         contents=[
     "input: Genera una introduccion del siguiente trabajo analizandolo y utilizando conectivos, evita colocar un titulo de introduccion al principio y tambien evita copiar la definicion del texto principal al principio, el titulo del trabajo es 'La medula osea' y el texto es el siguiente: \"La médula ósea es un tipo de tejido biológico flexible que se encuentra en el interior de los huesos largos, vértebras, costillas, esternón, huesos del cráneo, cintura escapular y pelvis.\n\n\nTodas las células sanguíneas derivan de una célula madre hematopoyética pluripotencial ubicada en la médula ósea. En promedio, la médula ósea constituye el 4 por ciento del total de la masa corporal del ser humano; por ejemplo en un adulto que pesa unos 65 kilos, su médula ósea pesa unos 2.6 kg. El componente hematopoyético de la médula ósea produce unos 500 000 millones de glóbulos rojos por día, que utilizan la vasculatura de la médula ósea como conducto de la circulación sistémica del cuerpo. La médula ósea también es un componente clave del sistema linfático, produciendo los linfocitos que forman parte del sistema inmune del cuerpo.\n\n\nTipos de Médula Ósea:\n\n\nExisten dos tipos principales de médula ósea, cada uno con características y funciones distintivas:\n\n\nMédula Ósea Roja (MOR): Predominante en etapas tempranas de la vida, la MOR se caracteriza por su alta actividad hematopoyética. Contiene una rica red de sinusoides vasculares y una población diversa de células madre hematopoyéticas (CMH), responsables de generar los diferentes linajes celulares sanguíneos: eritrocitos, leucocitos y trombocitos.\n\n\nMédula Ósea Amarilla (MOA): Con el avance de la edad, una porción significativa de la MOR se transforma en MOA, compuesta principalmente por adipocitos. Aunque su actividad hematopoyética es limitada en condiciones normales, la MOA conserva una reserva de CMH y puede experimentar una reconversión a MOR en situaciones de demanda aumentada de células sanguíneas.\n\n\nHematopoyesis:\n\n\nLa hematopoyesis es un proceso complejo y regulado que involucra la proliferación, diferenciación y maduración de las CMH. Estas células pluripotentes dan origen a progenitores mieloides y linfoides, que a su vez generan los distintos tipos de células sanguíneas:\n\n\n* Eritrocitos: Responsables del transporte de oxígeno y dióxido de carbono.\n\n\n* Leucocitos: Células del sistema inmunitario encargadas de la defensa contra patógenos.\n\n\n* Trombocitos: Participan en la hemostasia y coagulación sanguínea.\n\n\nPatologías de la Médula Ósea:\n\n\nDiversas enfermedades pueden afectar la médula ósea, comprometiendo su función y ocasionando trastornos hematológicos. Algunas de las patologías más frecuentes incluyen:\n\n\n* Leucemias: Neoplasias hematológicas caracterizadas por la proliferación clonal de células hematopoyéticas malignas.\n\n\n* Mieloma Múltiple: Cáncer de células plasmáticas que produce daño óseo y alteraciones hematológicas.\n\n\n* Anemia Aplásica: Insuficiencia medular que resulta en una disminución de la producción de células sanguíneas.\n\n\n* Síndromes Mielodisplásicos: Grupo heterogéneo de trastornos caracterizados por hematopoyesis inefectiva y riesgo de progresión a leucemia aguda.\n\n\nTrasplante de Médula Ósea:\n\n\nEl trasplante de médula ósea (TMO) es un procedimiento terapéutico utilizado en el tratamiento de diversas enfermedades hematológicas y oncológicas. Consiste en la infusión de células madre hematopoyéticas procedentes de un donante compatible, con el objetivo de restaurar la función medular y lograr la remisión de la enfermedad.\n\n\nInvestigación en Médula Ósea:\n\n\nLa investigación en médula ósea es un campo en constante evolución, con avances significativos en áreas como la biología de las CMH, la terapia génica y la ingeniería de tejidos. Estos avances prometen mejorar el diagnóstico, tratamiento y pronóstico de las enfermedades de la médula ósea, así como ampliar las aplicaciones del TMO en el futuro.\". La respuesta debe estar representada en una sola linea de texto con cada párrafo separado estrictamente por \n\n\n",
     "output: Este trabajo explorará en profundidad la estructura y función de la médula ósea, detallando los distintos tipos de médula ósea existentes: la médula ósea roja, rica en células madre hematopoyéticas y responsable de la producción activa de células sanguíneas, y la médula ósea amarilla, compuesta principalmente por tejido adiposo pero capaz de convertirse en médula roja en situaciones de alta demanda.\n\n\nAdemás, se examinará cómo este proceso está finamente regulado por una compleja red de factores de crecimiento y citoquinas, garantizando la producción equilibrada de cada tipo celular según las necesidades del organismo.\n\n\nAsimismo, se abordarán las principales patologías que pueden afectar a la médula ósea, como las leucemias, caracterizadas por la proliferación descontrolada de células sanguíneas malignas; el mieloma múltiple, un cáncer de células plasmáticas; la anemia aplásica, que resulta en una disminución de la producción de células sanguíneas; y los síndromes mielodisplásicos, un grupo de trastornos que afectan la producción y maduración de las células sanguíneas. Se discutirán los síntomas, diagnóstico y opciones de tratamiento para cada una de estas enfermedades, haciendo hincapié en la importancia de un diagnóstico temprano y un tratamiento adecuado.\n\n\nEl trasplante de médula ósea, un procedimiento que consiste en reemplazar la médula ósea enferma por células madre sanas de un donante compatible, será otro de los temas centrales de este trabajo. Se explicará en qué casos está indicado este tratamiento, cómo se realiza el procedimiento y cuáles son los riesgos y beneficios asociados.\n\n\nFinalmente, se explorarán los avances más recientes en la investigación de la médula ósea, incluyendo el estudio de las células madre hematopoyéticas, la terapia génica y la ingeniería de tejidos. Se discutirá cómo estos avances están abriendo nuevas vías para el diagnóstico y tratamiento de las enfermedades de la médula ósea, y cómo podrían conducir al desarrollo de terapias más eficaces y personalizadas en el futuro.",
@@ -141,42 +133,20 @@ def generate_introduction(title, body):
     f"input: Genera una introduccion del siguiente trabajo analizandolo y utilizando conectivos, evita colocar un titulo de introduccion al principio y tambien evita copiar la definicion del texto principal al principio, el titulo del trabajo es '{title}' y el texto es el siguiente: \"{body}\". La respuesta debe estar representada en una sola linea de texto con cada párrafo separado estrictamente por \n\n\n",
     "output: ",
     ])
-
-    return response.text
+        return re.sub(r'(?i)^output:?\s*', '', response.text).strip() if response.text else ''
+    except Exception as e:
+        logger.error('Error generando introducción: %s', e)
+        return ''
 
 
 def generate_conclusion(title, body):
 
-    # Create the model
-    config = types.GenerateContentConfig(
-        temperature=0.40,
-        top_p=0.95,
-        top_k=40,
-        max_output_tokens=1300,
-        response_mime_type="text/plain",
-        safety_settings=[
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-        ]
-    )
+    config = _make_config(temperature=0.4, max_output_tokens=4000)
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        config=config,
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            config=config,
         contents=[
     "input: Genera una conclusion del siguiente trabajo analizandolo y utilizando conectivos, evita colocar un titulo de conclusion al principio, el titulo del trabajo es 'La medula osea' y el texto es el siguiente: \"La médula ósea es un tipo de tejido biológico flexible que se encuentra en el interior de los huesos largos, vértebras, costillas, esternón, huesos del cráneo, cintura escapular y pelvis.\n\n\nTodas las células sanguíneas derivan de una célula madre hematopoyética pluripotencial ubicada en la médula ósea. En promedio, la médula ósea constituye el 4 por ciento del total de la masa corporal del ser humano; por ejemplo en un adulto que pesa unos 65 kilos, su médula ósea pesa unos 2.6 kg. El componente hematopoyético de la médula ósea produce unos 500 000 millones de glóbulos rojos por día, que utilizan la vasculatura de la médula ósea como conducto de la circulación sistémica del cuerpo. La médula ósea también es un componente clave del sistema linfático, produciendo los linfocitos que forman parte del sistema inmune del cuerpo.\n\n\nTipos de Médula Ósea:\n\n\nExisten dos tipos principales de médula ósea, cada uno con características y funciones distintivas:\n\n\nMédula Ósea Roja (MOR): Predominante en etapas tempranas de la vida, la MOR se caracteriza por su alta actividad hematopoyética. Contiene una rica red de sinusoides vasculares y una población diversa de células madre hematopoyéticas (CMH), responsables de generar los diferentes linajes celulares sanguíneos: eritrocitos, leucocitos y trombocitos.\n\n\nMédula Ósea Amarilla (MOA): Con el avance de la edad, una porción significativa de la MOR se transforma en MOA, compuesta principalmente por adipocitos. Aunque su actividad hematopoyética es limitada en condiciones normales, la MOA conserva una reserva de CMH y puede experimentar una reconversión a MOR en situaciones de demanda aumentada de células sanguíneas.\n\n\nHematopoyesis:\n\n\nLa hematopoyesis es un proceso complejo y regulado que involucra la proliferación, diferenciación y maduración de las CMH. Estas células pluripotentes dan origen a progenitores mieloides y linfoides, que a su vez generan los distintos tipos de células sanguíneas:\n\n\n* Eritrocitos: Responsables del transporte de oxígeno y dióxido de carbono.\n\n\n* Leucocitos: Células del sistema inmunitario encargadas de la defensa contra patógenos.\n\n\n* Trombocitos: Participan en la hemostasia y coagulación sanguínea.\n\n\nPatologías de la Médula Ósea:\n\n\nDiversas enfermedades pueden afectar la médula ósea, comprometiendo su función y ocasionando trastornos hematológicos. Algunas de las patologías más frecuentes incluyen:\n\n\n* Leucemias: Neoplasias hematológicas caracterizadas por la proliferación clonal de células hematopoyéticas malignas.\n\n\n* Mieloma Múltiple: Cáncer de células plasmáticas que produce daño óseo y alteraciones hematológicas.\n\n\n* Anemia Aplásica: Insuficiencia medular que resulta en una disminución de la producción de células sanguíneas.\n\n\n* Síndromes Mielodisplásicos: Grupo heterogéneo de trastornos caracterizados por hematopoyesis inefectiva y riesgo de progresión a leucemia aguda.\n\n\nTrasplante de Médula Ósea:\n\n\nEl trasplante de médula ósea (TMO) es un procedimiento terapéutico utilizado en el tratamiento de diversas enfermedades hematológicas y oncológicas. Consiste en la infusión de células madre hematopoyéticas procedentes de un donante compatible, con el objetivo de restaurar la función medular y lograr la remisión de la enfermedad.\n\n\nInvestigación en Médula Ósea:\n\n\nLa investigación en médula ósea es un campo en constante evolución, con avances significativos en áreas como la biología de las CMH, la terapia génica y la ingeniería de tejidos. Estos avances prometen mejorar el diagnóstico, tratamiento y pronóstico de las enfermedades de la médula ósea, así como ampliar las aplicaciones del TMO en el futuro.\". La respuesta debe estar representada en una sola linea de texto con cada párrafo separado estrictamente por \n\n\n",
     "output: En conclusión, la médula ósea es un tejido vital que desempeña funciones cruciales en la hematopoyesis y el sistema inmunológico del ser humano. \n\n\nEste tejido, que constituye aproximadamente el 4% de la masa corporal, es el origen de todas las células sanguíneas, subrayando su importancia en la salud y el mantenimiento del organismo.\n\n\nEn última instancia, la distinción entre la médula ósea roja y la médula ósea amarilla, así como su capacidad para adaptarse a las demandas fisiológicas, demuestra la complejidad y versatilidad de este tejido. La hematopoyesis, proceso regulado y esencial, asegura el suministro constante de eritrocitos, leucocitos y trombocitos, vitales para la oxigenación, defensa inmunitaria y coagulación sanguínea.\n\n\nAsimismo, diversas patologías pueden comprometer la función de la médula ósea, desde leucemias hasta síndromes mielodisplásicos, lo que subraya la necesidad de un diagnóstico y tratamiento oportunos. En este contexto, el trasplante de médula ósea emerge como una intervención terapéutica crucial, permitiendo la restauración de la función medular y la remisión de enfermedades hematológicas y oncológicas.\n\n\nPor último, la investigación en médula ósea sigue avanzando con descubrimientos significativos en biología celular, terapia génica e ingeniería de tejidos. Estos avances prometen mejorar no solo el tratamiento y pronóstico de las enfermedades de la médula ósea, sino también ampliar las aplicaciones del trasplante de médula ósea en el futuro. En resumen, la médula ósea es un componente indispensable para la salud y el bienestar humano, y su estudio continuo es fundamental para la medicina moderna.",
@@ -201,84 +171,32 @@ def generate_conclusion(title, body):
     f"input: Genera una conclusion del siguiente trabajo analizandolo y utilizando conectivos, evita colocar un titulo de conclusion al principio, el titulo del trabajo es '{title}' y el texto es el siguiente: \"{body}\". La respuesta debe estar representada en una sola linea de texto con cada párrafo separado estrictamente por \n\n\n",
     "output: ",
     ])
-
-    return response.text
+        return re.sub(r'(?i)^output:?\s*', '', response.text).strip() if response.text else ''
+    except Exception as e:
+        logger.error('Error generando conclusión: %s', e)
+        return ''
 
 
 
 
 def validate_titles(title):
-
-    # Create the model
-    config = types.GenerateContentConfig(
-        temperature=0.05,
-        top_p=0.95,
-        top_k=40,
-        max_output_tokens=5,
-        response_mime_type="text/plain",
-        safety_settings=[
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-            types.SafetySetting(
-                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-            ),
-        ]
-    )
-
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        config=config,
-        contents=[
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'allafewahsad'",
-    "output: FALSE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'messi'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'pene'",
-    "output: FALSE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'vagina'",
-    "output: FALSE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'aparato reproductor masculino'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'aparato reproductor femenino'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'integrales definidas'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'El arte (caracteristias, origenes, definicion, principales autores, relacion con la tecnologia e inteligencia artificial)'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'javier'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'las seluyasd mafdrae'",
-    "output: FALSE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'hola que tal'",
-    "output: FALSE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'La opera: historia y referencias'",
-    "output: TRUE",
-    "input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es 'La medicina moderna (definicion, cronologia, evolucion, impacto, futuro)'",
-    "output: TRUE",
-    f"input: Recibiras un titulo y analizaras si es valido para una busqueda de google o informe de cualquier tipo, no importa si es muy general o muy especifico, pero que tenga coherencia para cualquier busqueda. Tambien pueden venir con temas especificos entre parentesis y si tienen coherencia entonces siguen siendo validos. Los titulos que contengan contenido sensible pueden ser validos si consideras que sirven para fines educacionales o investigativos, ya que la pregunta puede ser sobre temas de ciencias de la salud. En ese caso, responde 'TRUE'. Si es un titulo sin coherencia logica para una busqueda de google o informe de cualquier tipo, o si crees que tendra contenido sensible para fines no investigativos o educacionales, entonces responde 'FALSE'. El titulo es '{title}'",
-    "output: ",
-    ])
-    return response.text
-
-
-
-
-
-
-
-
-#model = genai.GenerativeModel("gemini-1.5-flash")
-#sample_pdf = genai.upload_file("test.pdf")
-#response = model.generate_content(["Dame un indice elaborado con cada subtitulo del texto y especificando el numero de la pagina en la que empieza cada subtitulo estrictamente. Ademas separar con muchos puntos. Ejemplo: 'La celula...............................2'\n\nTipos de celula...........................3", sample_pdf])
-#print(response.text)
+    config = _make_config(temperature=0.05, max_output_tokens=200)
+    prompt = f"Analiza si este título es válido para buscar información en internet o escribir un artículo. Responde únicamente con la palabra 'TRUE' si es coherente, o 'FALSE' si no tiene sentido o son letras al azar. Título: '{title}'"
+    
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            config=config,
+            contents=[prompt]
+        )
+        logger.info('DEBUG RESPONSE OBJ: %s', response)
+        raw_text = response.text if hasattr(response, 'text') and response.text else ''
+        cleaned_text = re.sub(r'(?i)^output:?\s*', '', raw_text).strip()
+        
+        logger.info('DEBUG validate_titles raw: %r', raw_text)
+        logger.info('DEBUG validate_titles cleaned: %r', cleaned_text)
+        
+        return cleaned_text if cleaned_text else 'FALSE'
+    except Exception as e:
+        logger.error('Error validando título: %s', e)
+        return 'FALSE'
