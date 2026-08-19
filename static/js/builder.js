@@ -384,25 +384,108 @@
   });
 
   /* ==========================================================
-     9. LISTA DE INSTITUCIONES (datalist)
+     9. AUTOCOMPLETE DE INSTITUCIONES
      ========================================================== */
   var listUrl = form.getAttribute('data-universities');
+  var acInput = $('#f-u');
+  var acList = $('#ac-list');
+  var acItems = [];       // all university names
+  var acActive = -1;      // keyboard-highlighted index
+  var acPicked = false;   // suppress reopen after selection
+
+  function escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function highlightMatch(text, query) {
+    if (!query) { return text; }
+    var re = new RegExp('(' + escapeRe(query) + ')', 'gi');
+    return text.replace(re, '<mark>$1</mark>');
+  }
+
+  function renderAc(query) {
+    acList.innerHTML = '';
+    acActive = -1;
+    if (!query || query.length < 2) {
+      acList.classList.remove('is-open');
+      return;
+    }
+
+    var lq = query.toLowerCase();
+    var matches = acItems.filter(function (name) {
+      return name.toLowerCase().indexOf(lq) !== -1;
+    });
+
+    if (matches.length === 0) {
+      acList.classList.remove('is-open');
+      return;
+    }
+
+    // Cap at 12 results to keep it fast
+    matches.slice(0, 12).forEach(function (name) {
+      var div = document.createElement('div');
+      div.className = 'ac-item';
+      div.innerHTML = highlightMatch(name, query);
+      div.addEventListener('mousedown', function (e) {
+        e.preventDefault(); // prevent blur before value is set
+        acPicked = true;
+        acInput.value = name;
+        acList.classList.remove('is-open');
+        acInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      acList.appendChild(div);
+    });
+
+    acList.classList.add('is-open');
+  }
+
+  function acNavigate(dir) {
+    var items = $$('.ac-item', acList);
+    if (!items.length) { return; }
+    acActive = Math.max(-1, Math.min(items.length - 1, acActive + dir));
+    items.forEach(function (el, i) { el.classList.toggle('is-active', i === acActive); });
+    if (acActive >= 0) { items[acActive].scrollIntoView({ block: 'nearest' }); }
+  }
+
+  if (acInput && acList) {
+    acInput.addEventListener('input', function () {
+      if (acPicked) { acPicked = false; return; }
+      renderAc(this.value.trim());
+    });
+
+    acInput.addEventListener('keydown', function (e) {
+      if (!acList.classList.contains('is-open')) { return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); acNavigate(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); acNavigate(-1); }
+      else if (e.key === 'Enter' && acActive >= 0) {
+        e.preventDefault();
+        var items = $$('.ac-item', acList);
+        if (items[acActive]) {
+          acPicked = true;
+          acInput.value = items[acActive].textContent;
+          acList.classList.remove('is-open');
+          acInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      else if (e.key === 'Escape') { acList.classList.remove('is-open'); }
+    });
+
+    acInput.addEventListener('blur', function () {
+      // Small delay so click on item fires first
+      setTimeout(function () { acList.classList.remove('is-open'); }, 150);
+    });
+
+    acInput.addEventListener('focus', function () {
+      if (this.value.trim().length >= 2) { renderAc(this.value.trim()); }
+    });
+  }
+
   if (listUrl) {
     fetch(listUrl)
       .then(function (r) { return r.ok ? r.text() : ''; })
       .then(function (txt) {
-        var dl = $('#universidades');
-        if (!dl || !txt) { return; }
-        var frag = document.createDocumentFragment();
-        txt.split('\n').forEach(function (line) {
-          var name = line.trim();
-          if (!name) { return; }
-          var opt = document.createElement('option');
-          opt.value = name;
-          frag.appendChild(opt);
-        });
-        dl.innerHTML = '';
-        dl.appendChild(frag);
+        if (!txt) { return; }
+        acItems = txt.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
       })
       .catch(function () { /* la lista es opcional */ });
   }

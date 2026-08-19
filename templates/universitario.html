@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#333369">
+  <meta name="theme-color" content="#141430">
   <title>Crear documento · Gullieth</title>
 
   <link rel="icon" href="{{ url_for('static', filename='icono.jpg') }}" type="image/x-icon">
@@ -100,9 +100,11 @@
             <div class="grid grid--2">
               <div class="field span-2">
                 <label for="f-u"><span id="lbl-u">Universidad o instituto</span></label>
-                <input class="input" type="text" id="f-u" name="u" list="universidades" maxlength="80"
-                  placeholder="Ej. Universidad Central de Venezuela" autocomplete="off">
-                <datalist id="universidades"></datalist>
+                <div class="ac-wrap">
+                  <input class="input" type="text" id="f-u" name="u" maxlength="80"
+                    placeholder="Ej. Universidad Central de Venezuela" autocomplete="off">
+                  <div class="ac-list" id="ac-list"></div>
+                </div>
                 <span class="err-msg"></span>
                 <span class="help">Si está en la lista, su escudo se coloca en la portada automáticamente.</span>
               </div>
@@ -207,7 +209,8 @@
           <div class="block">
             <div class="block__label">Cantidad</div>
             <div class="stepper">
-              <button type="button" id="stu-minus" aria-label="Quitar un estudiante"><i class="bx bx-minus"></i></button>
+              <button type="button" id="stu-minus" aria-label="Quitar un estudiante"><i
+                  class="bx bx-minus"></i></button>
               <output id="stu-count" aria-live="polite">1</output>
               <button type="button" id="stu-plus" aria-label="Agregar un estudiante"><i class="bx bx-plus"></i></button>
             </div>
@@ -400,7 +403,9 @@
       <h2 class="loader__title">Generando tu documento</h2>
       <p class="loader__msg" id="loader-msg">Ordenando los datos de tu portada…</p>
 
-      <div class="bar"><div class="bar__fill" id="loader-bar"></div></div>
+      <div class="bar">
+        <div class="bar__fill" id="loader-bar"></div>
+      </div>
       <span class="bar__pct" id="loader-pct">0%</span>
 
       <div class="loader__steps">
