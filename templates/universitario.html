@@ -1,339 +1,420 @@
 <!DOCTYPE html>
 <html lang="es">
-  <!--Pa la proxima pideme que comieze yo, y ya luego tu le agregas funcionalidad, es mas simple y quedara mas bonito, te lo aseguro-->
 
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333369">
+  <title>Crear documento · Gullieth</title>
 
+  <link rel="icon" href="{{ url_for('static', filename='icono.jpg') }}" type="image/x-icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha512-MV7K8+y+gLIBoVD59lQIYicR65iaqukzvf/nwasF0nqhPay5w/9lJmVM2hMDcnK1OnMGCdVK+iQrJ7lzPJQd1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-  <link rel="stylesheet" href="..\static\css\header.css">
-  <link rel="stylesheet" href="..\static\css\menu_body.css">
-  <link rel="icon" href="logos/logico_black.png" type="image/x-icon">
-  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=school" />
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/form.css') }}">
 
-  <script defer src="..\static\js\write.js"></script>
-  <script defer src="..\static\js\funciones_menu.js"></script>
-
-  <title>Gullieth</title>
+  <script defer src="{{ url_for('static', filename='js/ui.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/builder.js') }}"></script>
 </head>
+
 <body>
-  <header>
-    <div class="bottom-bar">
-      <div class="bottom-bar__content">
-        <a href="#" class="logo">
-          <img class="logo__img" src="..\static\img\logo.png" alt="logo">
-        </a>
-    
-        <nav class="nav">
-          <ul class="nav__list">
-            <li class="nav__item">
-              <a class="nav__link ai" href="#">Gullieth AI <i class='bx bx-shape-triangle larger-icon' style="color: rgb(210, 184, 14);"></i></a>
-            </li>
-          </ul>
-        </nav>
-  
-        <div class="hamburger">
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-        </div>
+
+  <!-- ===================== NAVBAR ===================== -->
+  <header class="nav" data-nav>
+    <div class="shell nav__inner">
+      <a href="{{ url_for('welcome') }}" class="brand">
+        <img class="brand__img" src="{{ url_for('static', filename='img/logo.png') }}" alt="Gullieth">
+        <span class="brand__name">Gulli<span>eth</span></span>
+      </a>
+
+      <nav class="nav__links" data-nav-links>
+        <a class="nav__link" href="{{ url_for('welcome') }}">Inicio</a>
+        <a class="nav__link" href="{{ url_for('welcome') }}#como-funciona">Cómo funciona</a>
+        <a class="nav__link" href="{{ url_for('welcome') }}#faq">Preguntas</a>
+      </nav>
+
+      <div class="nav__actions">
+        <span class="pill btn--nav-cta"><i class="bx bx-shape-triangle"></i> Gullieth AI</span>
+        <button class="nav__burger" data-burger type="button" aria-label="Abrir menú" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
       </div>
     </div>
   </header>
 
+  <main class="shell builder-page">
 
-
-    <div class="columnas_contenedor">
-      <!--FORMULARIO PRINCIPAL-->
-      <div id="formulario">
-        <form id="dynamicForm" action="/process_form" method="POST">
-          <!--Campos de Membrete-->
-          <div></div>
-          <div id="campos_principales">
-            <input type="text" list="universidades" placeholder="Universidad" name="u" id="universidad" maxlength="80" >
-            <input type="text" placeholder="Área / Facultad" name="area" id="area" maxlength="40" >
-            <input type="text" placeholder="Carrera" name="carrera" id="carrera" maxlength="40" >
-            <input type="text" placeholder="Docente" name="teacher" id="docente" >
-            <input type="text" placeholder="Asignatura" name="asignatura" id="asignatura" >
-            <input type="text" placeholder="Seccion" name="seccion" id="seccion" >
-            <!--Campos de Localidad/Fecha-->
-            <input type="text" placeholder="Ubicacion" name="city" id="ciudad" >
-            <input type="date" placeholder="Fecha" name="date" id="fecha">
-          </div>
-          <!--Periodo academico-->
-          <div>
-            <label for="periodoContainer";">Periodo academico:</label>
-            <div id="periodoContainer">
-              <!--numero del periodo academico-->
-              <select name='periodo' id='periodo'>
-                <option value="">Select...</option>
-                <option value="1º">1º</option>
-                <option value="2º">2º</option>
-                <option value="3º">3º</option>
-                <option value="4º">4º</option>
-                <option value="5º">5º</option>
-                <option value="6º">6º</option>
-                <option value="7º">7º</option>
-                <option value="8º">8º</option>
-                <option value="9º">9º</option>
-                <option value="10º">10º</option>
-                <option value="11º">11º</option>
-                <option value="12º">12º</option>
-                <option value="13º">13º</option>
-                <option value="14º">14º</option>
-                <option value="15º">15º</option>
-                <!-- Add more options as needed -->
-              </select>
-              <!--Opciones de tipo de periodo semestre/anual/etc-->
-              <select name='academico' id='academico'>
-              <option value="">Select...</option>
-              <option value="Semestre">Grado</option>
-              <option value="Año">Año</option>
-              <option value="Semestre">Semestre</option>
-              <option value="Trimestre">Trimestre</option>
-            </select>
-            </div>
-          </div>
-          <!--Cantidad de estudiantes-->
-          <div>
-            <label for="studentCount">Cantidad de estudiantes:</label>
-            <select name='gblock-template-canvas-integrantes' id="studentCount">
-                <option value=''>Select...</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value='7'>7</option>
-                <option value='8'>8</option>
-            </select>
-            <div id="studentContainer"></div>
-          </div>
-
-          <!-- Global Mode Selector for all inputs -->
-           <div id="modo">
-            <!--seleccion de modo, manual/ia-->
-            <div class="selecmodo">
-              <label>Elegir Modo</label>
-              <div class="button-group">
-                  <input type="radio" id="mode-standard" name="global-mode" value="standard" onchange="toggleGlobalMode('standard')" checked>
-                  <label for="mode-standard">Manual</label>
-
-                  <input type="radio" id="mode-ia" name="global-mode" value="ia" onchange="toggleGlobalMode('ia')">
-                  <label for="mode-ia">IA</label>
-              </div>
-            </div>
-            <!--Instituto-->
-            <div class="selecmodo">
-              <label>Instituto</label>
-              <div class="button-group">
-                  <input type="radio" id="uni" name="instituto" value="universidad" onchange="toggleInstitute('uni')" checked>
-                  <label for="uni">Universidad</label>
-                  <input type="radio" id="bach" name="instituto" value="bachiller" onchange="toggleInstitute('bach')">
-                  <label for="bach">Bachiller</label>
-              </div>
-            </div>
-            <!-- Botón de cambio de fuente -->
-            <div class="selecmodo">
-              <label>Fuente</label>
-              <div class="button-group">
-                <input type="radio" id="mode-arial" name="fuente" value="arial" onchange="toggleFont(arial)" checked>
-                <label for="mode-arial">Arial</label>
-
-                <input type="radio" id="mode-tnr" name="fuente" value="tnr" onchange="toggleFont(tnr)">
-                <label for="mode-tnr" style="min-width:130px ;">Time new Romans</label>
-              </div>
-            </div>
-          </div>
-          <!--Titulo del trabajo-->
-          <div>
-            <label for="titulo">Titulo del Trabajo</label>
-            <input type="text" name="title" id="titulo" maxlength="300" >
-          </div>
-          <!--modo ia por defecto desactivado-->
-          <div id="subtitlesContainer" style="display:none;">
-            <label for="subtitlesCount">Temas especificos:</label>
-            <select id="subtitlesCount" onchange="generateSubtitles()">
-                <option value="">Seleccione...</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value="7">7</option>
-                <option value="8">8</option>
-            </select>
-            <div id="subtitleInputs"></div> <!-- Aquí se generarán los inputs -->
-          </div>
-          <!--segmentos del trabajo-->
-          <div id="segmentos">
-            <!-- Contenido -->
-            <div id="contenido-wrapper">
-            <label for="contenido">Contenido:</label>
-            <input type="text" placeholder="Contenido" name="body" id="contenido" onclick="openModal('contenido-modal')">
-            <button type="button" id="contenido-toggle" onclick="toggleAIUsage('contenido')"style="font-weight: bold; font-size: 20px;">-</button>
-            </div>
-            <!-- Introducción -->
-            <div id="intro-wrapper">
-            <label for="introduccion">Introducción:</label>
-            <input type="text" placeholder="Introducción" name="introduccion" id="introduccion" onclick="openModal('introduccion-modal')">
-            <button type="button" id="introduccion-toggle" onclick="toggleAIUsage('introduccion')"style="font-weight: bold; font-size: 20px;">-</button>
-
-            </div>
-            <!-- Conclusión -->
-            <div id="conclusion-wrapper">
-            <label for="conclusion">Conclusión:</label>
-            <input type="text" placeholder="Conclusión" name="conclusion" id="conclusion" onclick="openModal('conclusion-modal')">
-            <button type="button" id="conclusion-toggle" onclick="toggleAIUsage('conclusion')"style="font-weight: bold; font-size: 20px;">-</button>
-            </div>
-          </div>
-
-          <!-- Modals para cada input -->
-          <!-- Modal para Contenido -->
-          <div id="contenido-modal" class="modal">
-          <div class="modal-content">
-              <span class="close" onclick="closeModal('contenido-modal')">&times;</span>
-              <h2>Contenido</h2>
-              <textarea id="contenido-textarea"></textarea>
-              <button type="button" class="modal-btn" onclick="pasteText('contenido-textarea')">Pegar Texto</button>
-              <button type="button" class="modal-btn" onclick="saveText('contenido', 'contenido-textarea')">Guardar</button>
-          </div>
-          </div>
-          <!-- Modal para Introducción -->
-          <div id="introduccion-modal" class="modal">
-          <div class="modal-content">
-              <span class="close" onclick="closeModal('introduccion-modal')">&times;</span>
-              <h2>Introducción</h2>
-              <textarea id="introduccion-textarea"></textarea>
-              <button type="button" class="modal-btn" onclick="pasteText('introduccion-textarea')">Pegar Texto</button>
-              <button type="button" class="modal-btn" onclick="saveText('introduccion', 'introduccion-textarea')">Guardar</button>
-          </div>
-          </div>
-          <!-- Modal para Conclusión -->
-          <div id="conclusion-modal" class="modal">
-          <div class="modal-content">
-              <span class="close" onclick="closeModal('conclusion-modal')">&times;</span>
-              <h2>Conclusión</h2>
-              <textarea id="conclusion-textarea"></textarea>
-              <button type="button" class="modal-btn" onclick="pasteText('conclusion-textarea')">Pegar Texto</button>
-              <button type="button" class="modal-btn" onclick="saveText('conclusion', 'conclusion-textarea')">Guardar</button>
-          </div>
-          </div>
-
-          <div id="boton-enviar">
-            <button type="submit" id="submitButton">Generar</button>
-          </div>
-        </form>
+    <div class="builder-head">
+      <div>
+        <h1>Crea tu documento</h1>
+        <p>Completa los datos, mira cómo queda la portada y genera el trabajo completo.</p>
       </div>
+      <span class="pill"><i class="bx bx-time-five"></i> Toma menos de 2 minutos</span>
+    </div>
 
-      <!--CUADRO DE PREVISTA-->
-      <div class="Raiz_t">
-        <div class="trabajo">
-          <div class="edu_info">
-            <h4 class="r">REPUBLICA BOLIVARIANA DE VENEZUELA</h4>
-            <h4 class="m">MINISTERIO DE EL PODER POPULAR PARA LA EDUCACION UNIVERSITARIA</h4>
-            <h4 id="universidadDisplay">Universidad</h4>
-            <h4 id="areaDisplay">Área</h4>
-            <h4 id="carreraDisplay">Carrera</h4>
-            <h1 class="titulo">TITULO</h1>
+    <div class="builder">
+
+      <!-- ============================================================
+           FORMULARIO
+           Los "name" de cada campo son los que espera el backend
+           (/process_form → FormProcessor). No cambiar.
+           ============================================================ -->
+      <form id="docForm" action="{{ url_for('process_form') }}" method="POST" novalidate
+        data-universities="{{ url_for('static', filename='txt/lista_imagenes.txt') }}"
+        data-logo-base="{{ url_for('static', filename='logos') }}">
+
+        <!-- ---------- Indicador de pasos ---------- -->
+        <div class="wizard" role="tablist">
+          <button type="button" class="wizard__step is-active" data-step="1" role="tab">
+            <b><span>1</span></b><span class="wizard__text">Institución</span>
+          </button>
+          <button type="button" class="wizard__step" data-step="2" role="tab">
+            <b><span>2</span></b><span class="wizard__text">Estudiantes</span>
+          </button>
+          <button type="button" class="wizard__step" data-step="3" role="tab">
+            <b><span>3</span></b><span class="wizard__text">Contenido</span>
+          </button>
+        </div>
+
+        <!-- ==================== PASO 1 ==================== -->
+        <section class="panel is-active" data-panel="1">
+          <h2 class="panel__title"><i class="bx bx-buildings"></i> Datos de la portada</h2>
+          <p class="panel__hint">Sólo la institución es obligatoria. Lo demás aparece en la portada si lo llenas.</p>
+
+          <div class="block">
+            <div class="seg-row">
+              <div class="seg-group">
+                <span>Tipo de institución</span>
+                <div class="seg">
+                  <input type="radio" id="inst-uni" name="instituto" value="universidad" checked>
+                  <label for="inst-uni"><i class="bx bx-been-here"></i> Universidad</label>
+                  <input type="radio" id="inst-bach" name="instituto" value="bachiller">
+                  <label for="inst-bach"><i class="bx bx-book"></i> Bachillerato</label>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="pinfosec">
-            <div class="primera_sec">
-              <H3>Docente:
-              <p id="docenteDisplay"></p></H3>
-              <H3>Asignatura:
-              <p id="asignaturaDisplay"></p></H3>
-              <h3>Periodo:
-              <p id="periodoDisplay"></p></h3>
-              <h3>Seccion:
-              <p id="periodoDisplay"></p></h3>
+
+          <div class="block">
+            <div class="grid grid--2">
+              <div class="field span-2">
+                <label for="f-u"><span id="lbl-u">Universidad o instituto</span></label>
+                <input class="input" type="text" id="f-u" name="u" list="universidades" maxlength="80"
+                  placeholder="Ej. Universidad Central de Venezuela" autocomplete="off">
+                <datalist id="universidades"></datalist>
+                <span class="err-msg"></span>
+                <span class="help">Si está en la lista, su escudo se coloca en la portada automáticamente.</span>
+              </div>
+
+              <div class="field" id="wrap-area">
+                <label for="f-area">Área o facultad <span class="opt">· opcional</span></label>
+                <input class="input" type="text" id="f-area" name="area" maxlength="40"
+                  placeholder="Ej. Facultad de Ingeniería">
+              </div>
+
+              <div class="field" id="wrap-carrera">
+                <label for="f-carrera">Carrera <span class="opt">· opcional</span></label>
+                <input class="input" type="text" id="f-carrera" name="carrera" maxlength="40"
+                  placeholder="Ej. Ingeniería Informática">
+              </div>
+
+              <div class="field">
+                <label for="f-teacher">Docente <span class="opt">· opcional</span></label>
+                <input class="input" type="text" id="f-teacher" name="teacher" maxlength="60"
+                  placeholder="Ej. Prof. María Rodríguez">
+              </div>
+
+              <div class="field">
+                <label for="f-asignatura">Asignatura <span class="opt">· opcional</span></label>
+                <input class="input" type="text" id="f-asignatura" name="asignatura" maxlength="60"
+                  placeholder="Ej. Metodología de la Investigación">
+              </div>
             </div>
-            <div class="categoria_al">
-              <h3>Alumno:</h3>
-              <div id="alumnos-colums">
-                  <ul  class="texto"  id="alumnoList">
-                  </ul>
-                  <ul class="texto"  id="ciList">
-                  </ul>
+          </div>
+
+          <div class="block">
+            <div class="block__label">Periodo y sección</div>
+            <div class="grid grid--3">
+              <div class="field">
+                <label for="f-periodo">Periodo</label>
+                <select class="select" id="f-periodo" name="periodo">
+                  <option value="">Sin especificar</option>
+                  <option value="1º">1º</option>
+                  <option value="2º">2º</option>
+                  <option value="3º">3º</option>
+                  <option value="4º">4º</option>
+                  <option value="5º">5º</option>
+                  <option value="6º">6º</option>
+                  <option value="7º">7º</option>
+                  <option value="8º">8º</option>
+                  <option value="9º">9º</option>
+                  <option value="10º">10º</option>
+                  <option value="11º">11º</option>
+                  <option value="12º">12º</option>
+                  <option value="13º">13º</option>
+                  <option value="14º">14º</option>
+                  <option value="15º">15º</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="f-academico">Tipo</label>
+                <!-- Valores conservados tal cual estaban en la versión anterior
+                     para no alterar el texto que se escribe en la portada. -->
+                <select class="select" id="f-academico" name="academico">
+                  <option value="">Sin especificar</option>
+                  <option value="Semestre">Grado</option>
+                  <option value="Año">Año</option>
+                  <option value="Semestre">Semestre</option>
+                  <option value="Trimestre">Trimestre</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="f-seccion">Sección <span class="opt">· opcional</span></label>
+                <input class="input" type="text" id="f-seccion" name="seccion" maxlength="20" placeholder="Ej. A">
+              </div>
             </div>
+          </div>
+
+          <div class="block">
+            <div class="block__label">Lugar y fecha</div>
+            <div class="grid grid--2">
+              <div class="field">
+                <label for="f-city">Ciudad <span class="opt">· opcional</span></label>
+                <input class="input" type="text" id="f-city" name="city" maxlength="30" placeholder="Ej. Caracas">
+              </div>
+
+              <div class="field">
+                <label for="f-date-picker">Fecha de entrega <span class="opt">· opcional</span></label>
+                <input class="input" type="date" id="f-date-picker">
+                <!-- El backend espera dd/mm/yyyy: se envía en este campo oculto -->
+                <input type="hidden" name="date" id="f-date" value="">
+                <button type="button" class="add-btn" id="date-today" style="align-self: flex-start;">
+                  <i class="bx bx-calendar-check"></i> Usar la fecha de hoy
+                </button>
+              </div>
             </div>
-            <div class="ciudad_f">
-              <p id="ciudadDisplay"></p>
-              <p id="fechaDisplay"></p>
+          </div>
+        </section>
+
+        <!-- ==================== PASO 2 ==================== -->
+        <section class="panel" data-panel="2">
+          <h2 class="panel__title"><i class="bx bx-group"></i> Integrantes</h2>
+          <p class="panel__hint">Agrega hasta 8 estudiantes. Si trabajas solo, deja uno.</p>
+
+          <div class="block">
+            <div class="block__label">Cantidad</div>
+            <div class="stepper">
+              <button type="button" id="stu-minus" aria-label="Quitar un estudiante"><i class="bx bx-minus"></i></button>
+              <output id="stu-count" aria-live="polite">1</output>
+              <button type="button" id="stu-plus" aria-label="Agregar un estudiante"><i class="bx bx-plus"></i></button>
+            </div>
+            <!-- Campo que realmente viaja al backend -->
+            <input type="hidden" name="gblock-template-canvas-integrantes" id="f-count" value="1">
+          </div>
+
+          <div class="block">
+            <div class="block__label">Nombres y cédulas</div>
+            <div class="students" id="students"></div>
+            <div class="students-empty" id="students-empty" style="display:none;">
+              Sin integrantes: la portada saldrá sin la lista de alumnos.
+            </div>
+          </div>
+
+          <div class="note">
+            <i class="bx bx-info-circle"></i>
+            <span>El nombre aparece en la portada tal cual lo escribas, y la cédula se muestra como
+              <strong>C.I- 12345678</strong>.</span>
+          </div>
+        </section>
+
+        <!-- ==================== PASO 3 ==================== -->
+        <section class="panel" data-panel="3">
+          <h2 class="panel__title"><i class="bx bx-edit-alt"></i> Tema del trabajo</h2>
+          <p class="panel__hint">Esto es lo único que la IA necesita para redactar.</p>
+
+          <div class="block">
+            <div class="field">
+              <label for="f-title">Título del trabajo</label>
+              <input class="input" type="text" id="f-title" name="title" maxlength="300"
+                placeholder="Ej. El impacto de la inteligencia artificial en la educación">
+              <span class="err-msg"></span>
+              <span class="help">Sé específico: mientras más claro el título, mejor queda el desarrollo.</span>
+            </div>
+          </div>
+
+          <div class="block">
+            <div class="seg-row">
+              <div class="seg-group">
+                <span>¿Quién escribe el contenido?</span>
+                <div class="seg">
+                  <input type="radio" id="mode-ia" name="global-mode" value="ia" checked>
+                  <label for="mode-ia"><i class="bx bx-shape-triangle"></i> Gullieth AI</label>
+                  <input type="radio" id="mode-standard" name="global-mode" value="standard">
+                  <label for="mode-standard"><i class="bx bx-pencil"></i> Lo escribo yo</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- Modo IA: temas específicos (subtitle_1..subtitle_8) ---- -->
+          <div class="block" id="ia-block">
+            <div class="block__label">Temas específicos · opcional</div>
+            <div class="topics" id="topics"></div>
+            <div class="students-empty" id="topics-empty">
+              Sin temas añadidos: la IA organiza el desarrollo por su cuenta.
+            </div>
+            <button type="button" class="add-btn" id="add-topic" style="margin-top: 12px;">
+              <i class="bx bx-plus"></i> Añadir tema
+            </button>
+          </div>
+
+          <!-- ---- Modo manual ----
+               NOTA PARA EL DESARROLLADOR: estos campos (body, introduccion,
+               conclusion) se envían igual que antes, pero en app.py la ruta
+               /process_form los tiene comentados y siempre usa la IA.
+               Para que el modo manual tenga efecto hay que reactivar esas
+               líneas en app.py (no se tocó la lógica de generación). -->
+          <div class="block" id="manual-block" style="display:none;">
+            <div class="block__label">Contenido escrito por ti</div>
+            <div class="grid">
+              <div class="field">
+                <label for="f-introduccion">Introducción</label>
+                <textarea class="textarea" id="f-introduccion" name="introduccion"
+                  placeholder="Escribe o pega aquí la introducción…"></textarea>
+              </div>
+              <div class="field">
+                <label for="f-body">Desarrollo</label>
+                <textarea class="textarea" id="f-body" name="body" style="min-height: 200px;"
+                  placeholder="Escribe o pega aquí el desarrollo del trabajo…"></textarea>
+              </div>
+              <div class="field">
+                <label for="f-conclusion">Conclusión</label>
+                <textarea class="textarea" id="f-conclusion" name="conclusion"
+                  placeholder="Escribe o pega aquí la conclusión…"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="note note--gold" style="margin-top: 20px;">
+            <i class="bx bx-bulb"></i>
+            <span>Al generar, se crean a la vez el <strong>Word</strong> y el <strong>PDF</strong>, con índice y
+              páginas separadas para cada sección.</span>
+          </div>
+        </section>
+
+        <!-- ---------- Navegación ---------- -->
+        <div class="form-nav">
+          <button type="button" class="btn btn--ghost" id="btn-prev" style="visibility: hidden;">
+            <i class="bx bx-chevron-left"></i> Atrás
+          </button>
+          <div class="form-nav__spacer"></div>
+          <button type="button" class="btn btn--primary" id="btn-next">
+            Continuar <i class="bx bx-chevron-right"></i>
+          </button>
+          <button type="submit" class="btn btn--gold" id="btn-submit" style="display: none;">
+            <i class="bx bx-rocket"></i> Generar documento
+          </button>
+        </div>
+      </form>
+
+      <!-- ============================================================
+           VISTA PREVIA DE LA PORTADA
+           ============================================================ -->
+      <aside class="preview" id="preview">
+        <div class="preview__top">
+          <span class="preview__label"><i class="bx bx-file"></i> Vista previa</span>
+          <div class="preview__fonts seg">
+            <input type="radio" id="font-arial" name="fuente" value="arial" checked>
+            <label for="font-arial">Arial</label>
+            <input type="radio" id="font-tnr" name="fuente" value="tnr">
+            <label for="font-tnr">Times</label>
+          </div>
+          <button type="button" class="preview__close" id="preview-close" aria-label="Cerrar vista previa">
+            <i class="bx bx-x"></i>
+          </button>
+        </div>
+
+        <div class="paper-wrap">
+          <div class="paper" id="pv-paper">
+            <div class="paper__head">
+              <p>REPÚBLICA BOLIVARIANA DE VENEZUELA</p>
+              <p id="pv-ministerio">MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN UNIVERSITARIA</p>
+              <p id="pv-u">INSTITUCIÓN</p>
+              <p id="pv-area"></p>
+              <p id="pv-carrera"></p>
+              <img class="paper__crest" id="pv-crest" src="" alt="">
+            </div>
+
+            <div class="paper__title" id="pv-title">TÍTULO DEL TRABAJO</div>
+
+            <div class="paper__cols">
+              <div class="paper__col">
+                <div id="pv-teacher-wrap" style="display:none;">
+                  <p><u>DOCENTE:</u></p>
+                  <p id="pv-teacher"></p>
+                </div>
+                <div id="pv-asig-wrap" style="display:none;">
+                  <p><u>MATERIA:</u></p>
+                  <p id="pv-asignatura"></p>
+                </div>
+                <div id="pv-periodo-wrap" style="display:none;">
+                  <p><u id="pv-periodo-label"></u> <span id="pv-periodo"></span></p>
+                </div>
+                <div id="pv-seccion-wrap" style="display:none;">
+                  <p><u>SECCION:</u> <span id="pv-seccion"></span></p>
+                </div>
+              </div>
+
+              <div class="paper__col paper__col--right" style="display:none;">
+                <u id="pv-students-label">ALUMNOS:</u>
+                <div class="paper__students" id="pv-students"></div>
+              </div>
+            </div>
+
+            <div class="paper__foot">
+              <p id="pv-foot"></p>
             </div>
           </div>
         </div>
-      </div>
+
+        <p class="preview__meta"><i class="bx bx-info-circle"></i> Así se verá la primera página de tu trabajo.</p>
+      </aside>
     </div>
+  </main>
 
+  <!-- Botón flotante de vista previa (sólo móvil) -->
+  <button type="button" class="preview-fab" id="preview-fab">
+    <i class="bx bx-show"></i> Ver portada
+  </button>
 
+  <!-- ============================================================
+       OVERLAY DE PROGRESO
+       ============================================================ -->
+  <div class="loader" id="loader" role="status" aria-live="polite">
+    <div class="loader__box">
+      <div class="loader__ring"><i class="bx bx-shape-triangle"></i></div>
 
+      <h2 class="loader__title">Generando tu documento</h2>
+      <p class="loader__msg" id="loader-msg">Ordenando los datos de tu portada…</p>
 
+      <div class="bar"><div class="bar__fill" id="loader-bar"></div></div>
+      <span class="bar__pct" id="loader-pct">0%</span>
 
+      <div class="loader__steps">
+        <div class="loader__step" data-lstep="1"><i class="bx bx-circle"></i> Preparando la portada</div>
+        <div class="loader__step" data-lstep="2"><i class="bx bx-circle"></i> Validando el título</div>
+        <div class="loader__step" data-lstep="3"><i class="bx bx-circle"></i> Redactando el desarrollo</div>
+        <div class="loader__step" data-lstep="4"><i class="bx bx-circle"></i> Introducción y conclusión</div>
+        <div class="loader__step" data-lstep="5"><i class="bx bx-circle"></i> Armando el Word y el PDF</div>
+      </div>
 
-
-  <!--Estilos previos-->
-  <script>
-            // Función para abrir el modal
-            function openModal(modalId) {
-                document.getElementById(modalId).style.display = 'block';
-            }
-  
-            // Función para cerrar el modal
-            function closeModal(modalId) {
-                document.getElementById(modalId).style.display = 'none';
-            }
-  
-            // Función para pegar texto desde el portapapeles
-            function pasteText(textareaId) {
-                navigator.clipboard.readText()
-                    .then(text => {
-                        document.getElementById(textareaId).value = text;
-                    })
-                    .catch(err => {
-                        console.error('Error al pegar texto: ', err);
-                    });
-            }
-  
-            // Función para guardar el texto del modal en el input correspondiente
-            function saveText(inputId, textareaId) {
-                let input = document.getElementById(inputId);
-                let textarea = document.getElementById(textareaId);
-                input.value = textarea.value;
-                closeModal(textareaId + '-modal');  // Cerrar el modal al guardar
-            }
-  </script>
-  <script>
-    function toggleFont() {
-      const body = document.querySelector('.entrada_body');
-      const eduInfo = document.querySelector('.edu_info');
-      const button = document.getElementById('fontToggleBtn');
-
-      if (body.style.fontFamily === '"Times New Roman", serif') {
-        // Cambiar de vuelta a Arial
-        body.style.fontFamily = 'Arial, sans-serif';
-        eduInfo.style.fontSize = '11px';
-        button.style.fontFamily = 'Arial';
-        button.textContent = 'Arial';
-      } else {
-        // Cambiar a Times New Roman
-        body.style.fontFamily = '"Times New Roman", serif';
-        eduInfo.style.fontSize = '10.5px';
-        button.style.fontFamily = '"Times New Roman", serif';
-        button.textContent = 'Times New Roman';
-      }
-    }
-  </script>
+      <p class="loader__foot">Esto puede tardar un par de minutos. No cierres ni recargues esta página.</p>
+    </div>
+  </div>
 
 </body>
+
 </html>

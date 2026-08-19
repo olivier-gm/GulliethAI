@@ -8,7 +8,7 @@ El sistema no solo genera el contenido académico (Introducción, Desarrollo y C
 
 ## 🚀 Características Principales
 
-- **Inteligencia Artificial de Vanguardia**: Integración nativa con la API de Google Gemini a través del SDK moderno (`google-genai`), utilizando el modelo de alto rendimiento `gemini-3.5-flash` para generar redacciones coherentes, profesionales y detalladas.
+- **Inteligencia Artificial de Vanguardia**: Integración nativa con la API de Google Gemini a través del SDK moderno (`google-genai`), utilizando el modelo de alto rendimiento `gemini-3.6-flash` para generar redacciones coherentes, profesionales y detalladas.
 - **Validación Semántica de Títulos**: Filtro inteligente que analiza el título de la investigación antes de procesarla para validar su coherencia lógica y evitar contenidos inadecuados o no educativos.
 - **Formateo Automatizado de Portadas**: Generación dinámica de la portada con datos institucionales (Universidad/Colegio, Carrera, Asignatura, Docente, Fecha y hasta 8 estudiantes con sus C.I./ID).
 - **Procesamiento de Documentos (.docx)**: Uso de plantillas base de Microsoft Word (`python-docx`) con maquetación automática (fuente Arial 12pt, texto justificado, espaciado de línea Pt 21, saltos de página y subtítulos).
