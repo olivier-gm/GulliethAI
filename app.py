@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, session
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import os
 import logging
@@ -80,8 +81,14 @@ def process_form():
     introduccion = ''
     conclusion = ''
     if body != '':
-        introduccion = generate_introduction(processor.title, body)
-        conclusion = generate_conclusion(processor.title, body)
+        # La introducción y la conclusión solo dependen del título y del
+        # cuerpo ya generado, no una de la otra, así que se piden en
+        # paralelo en vez de esperar una llamada tras otra a Gemini.
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            intro_future = executor.submit(generate_introduction, processor.title, body)
+            conclusion_future = executor.submit(generate_conclusion, processor.title, body)
+            introduccion = intro_future.result()
+            conclusion = conclusion_future.result()
         #conclusion = processor.conclusion
 
     input_doc='input/plantilla.docx'

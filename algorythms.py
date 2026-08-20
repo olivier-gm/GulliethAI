@@ -4,6 +4,7 @@ import string
 import random
 import shutil
 import logging
+import threading
 import unicodedata
 import re
 
@@ -17,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 class Document_process:
+
+    # LibreOffice es de instancia única: las conversiones se serializan.
+    _LO_LOCK = threading.Lock()
 
     # ── LibreOffice detection ──────────────────────────────────────────
 
@@ -41,8 +45,92 @@ class Document_process:
         )
 
     @staticmethod
+    def _find_libreoffice_python():
+        """Busca el intérprete Python que trae LibreOffice (el que tiene `uno`).
+
+        Es un intérprete distinto al del proyecto: el módulo `uno` sólo existe
+        dentro de la instalación de LibreOffice.
+        """
+        try:
+            libre_path = Document_process._find_libreoffice()
+        except FileNotFoundError:
+            return None
+
+        program_dir = os.path.dirname(libre_path)
+        candidates = [
+            os.path.join(program_dir, 'python.exe'),   # Windows
+            os.path.join(program_dir, 'python'),       # algunos builds
+            '/usr/bin/python3',                        # Linux con python3-uno
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+        return None
+
+    @staticmethod
+    def _finalize_with_uno(input_file, pdf_output):
+        """Actualiza el índice y exporta el PDF vía UNO.
+
+        Devuelve True si LibreOffice pudo poblar el índice y generar el PDF.
+        """
+        lo_python = Document_process._find_libreoffice_python()
+        if not lo_python:
+            logger.info('No se encontró el Python de LibreOffice; se usa la conversión simple.')
+            return False
+
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lo_finalize.py')
+        if not os.path.isfile(script):
+            logger.warning('No se encontró lo_finalize.py; se usa la conversión simple.')
+            return False
+
+        soffice_path = Document_process._find_libreoffice()
+        command = [
+            lo_python, script,
+            os.path.abspath(input_file), os.path.abspath(pdf_output), soffice_path,
+        ]
+
+        # Una sola conversión a la vez: LibreOffice es de instancia única y dos
+        # procesos simultáneos se bloquean entre sí.
+        with Document_process._LO_LOCK:
+            try:
+                result = subprocess.run(
+                    command, timeout=150, capture_output=True, text=True,
+                )
+            except subprocess.TimeoutExpired:
+                logger.error('Timeout actualizando el índice con LibreOffice: %s', input_file)
+                return False
+            except Exception as e:
+                logger.error('Error lanzando LibreOffice/UNO: %s', e)
+                return False
+
+        if result.returncode == 0 and os.path.isfile(pdf_output):
+            logger.info('Índice actualizado y PDF generado: %s', pdf_output)
+            return True
+
+        logger.warning(
+            'La finalización con UNO falló (código %s): %s',
+            result.returncode, (result.stderr or '').strip()[:500],
+        )
+        return False
+
+    @staticmethod
     def convert(input_file, output_folder):
-        """Convierte un DOCX a PDF usando LibreOffice en modo headless."""
+        """Genera el PDF y deja el índice poblado en ambos formatos.
+
+        Primero intenta la vía UNO, que además de convertir actualiza la tabla
+        de contenido (LibreOffice no lo hace al cargar, así que el índice
+        saldría vacío tanto en el PDF como en el Word). Si esa vía no está
+        disponible, cae a la conversión simple de siempre: el PDF se genera
+        igual, sólo que con el índice sin poblar.
+        """
+        pdf_output = os.path.join(
+            output_folder,
+            os.path.splitext(os.path.basename(input_file))[0] + '.pdf',
+        )
+
+        if Document_process._finalize_with_uno(input_file, pdf_output):
+            return
+
         try:
             libre_path = Document_process._find_libreoffice()
         except FileNotFoundError as e:
@@ -127,9 +215,27 @@ class Document_process:
     # ── TOC (Tabla de Contenido) ───────────────────────────────────────
 
     @staticmethod
+    def set_outline_level(paragraph, level):
+        """Marca el nivel de esquema del párrafo (0 = nivel 1, 1 = nivel 2).
+
+        Esto es lo que realmente lee el campo TOC para armar el índice. Se
+        aplica DIRECTO sobre el párrafo y no sólo mediante el estilo, porque
+        las plantillas de este proyecto no traen estilos 'Heading' y los que
+        python-docx crea con add_style() nacen como estilos personalizados
+        sin nivel de esquema: el índice quedaba vacío ('no se encontraron
+        entradas de tabla de contenido') aunque el texto se viera en negrita.
+        """
+        pPr = paragraph._p.get_or_add_pPr()
+        for old in pPr.findall(qn('w:outlineLvl')):
+            pPr.remove(old)
+        outline = OxmlElement('w:outlineLvl')
+        outline.set(qn('w:val'), str(level))
+        pPr.append(outline)
+
+    @staticmethod
     def _configure_heading_styles(document):
-        """Configura los estilos Heading 1 y Heading 2 para el documento."""
-        for heading_name in ['Heading 1', 'Heading 2']:
+        """Crea/ajusta los estilos Heading 1 y Heading 2 con nivel de esquema."""
+        for heading_name, level, size in (('Heading 1', 0, 14), ('Heading 2', 1, 12)):
             try:
                 style = document.styles[heading_name]
             except KeyError:
@@ -139,9 +245,22 @@ class Document_process:
 
             font = style.font
             font.name = 'Arial'
-            font.size = Pt(14) if heading_name == 'Heading 1' else Pt(12)
+            font.size = Pt(size)
             font.bold = True
             font.color.rgb = RGBColor(0, 0, 0)
+
+            # El estilo también debe declarar su nivel de esquema, si no Word
+            # lo trata como un párrafo normal en negrita y no lo indexa.
+            style_el = style.element
+            pPr = style_el.find(qn('w:pPr'))
+            if pPr is None:
+                pPr = OxmlElement('w:pPr')
+                style_el.append(pPr)
+            for old in pPr.findall(qn('w:outlineLvl')):
+                pPr.remove(old)
+            outline = OxmlElement('w:outlineLvl')
+            outline.set(qn('w:val'), str(level))
+            pPr.append(outline)
 
     @staticmethod
     def add_toc_page(document):
@@ -162,17 +281,19 @@ class Document_process:
         paragraph = document.add_paragraph()
         paragraph.paragraph_format.line_spacing = Pt(21)
 
-        # Begin field char
+        # Begin field char. w:dirty le pide a Word que recalcule el campo al
+        # abrir el documento, sin esperar a que el usuario pulse F9.
         run1 = paragraph.add_run()
         fldChar_begin = OxmlElement('w:fldChar')
         fldChar_begin.set(qn('w:fldCharType'), 'begin')
+        fldChar_begin.set(qn('w:dirty'), 'true')
         run1._r.append(fldChar_begin)
 
         # Instruction text
         run2 = paragraph.add_run()
         instrText = OxmlElement('w:instrText')
         instrText.set(qn('xml:space'), 'preserve')
-        instrText.text = ' TOC \\o "1-2" \\h \\z \\u '
+        instrText.text = ' TOC \\o "1-3" \\h \\z \\u '
         run2._r.append(instrText)
 
         # Separate field char
@@ -267,40 +388,129 @@ class Document_process:
 
     # ── Generación de párrafos con estilos ─────────────────────────────
 
+    # Longitud máxima que puede tener una línea para considerarse subtítulo
+    SUBTITLE_MAX_LEN = 110
+
+    @staticmethod
+    def _clean_markdown(text):
+        """Quita los marcadores markdown que el modelo emite de vez en cuando."""
+        text = re.sub(r'^\s*#{1,6}\s*', '', text.strip())
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'^\*+\s*|\s*\*+$', '', text)
+        return text.replace('\r', ' ').replace('\n', ' ').strip()
+
+    @staticmethod
+    def _is_subtitle(raw_line):
+        """Decide si una línea del texto generado es un subtítulo.
+
+        El modelo devuelve los bloques separados por saltos de línea, sin
+        marcar cuáles son subtítulos, así que se deducen: son líneas cortas,
+        que no cierran como una oración normal (un párrafo casi siempre
+        termina en punto) o que vienen marcadas en markdown.
+        """
+        text = raw_line.strip()
+        if not text:
+            return False
+
+        # Marcado explícito del modelo: '## Título' o '**Título**'
+        if re.match(r'^\s*#{1,6}\s+\S', text):
+            return True
+        if re.match(r'^\*\*[^*]+\*\*[:.]?$', text):
+            return True
+
+        text = Document_process._clean_markdown(text)
+        if not text or len(text) > Document_process.SUBTITLE_MAX_LEN:
+            return False
+        if text.endswith(':'):
+            return True
+
+        # Un párrafo normal termina con puntuación de cierre. Los paréntesis y
+        # comillas finales no cuentan: un subtítulo puede acabar en ')', como
+        # 'Capa 1 (Layer 1): La Cadena Principal (On-Chain)', así que se miran
+        # descartando esos cierres.
+        core = text.rstrip(')]}"”\'’')
+        if core and core[-1] in '.;,':
+            return False
+
+        # Varias oraciones seguidas => es un párrafo, no un subtítulo
+        if re.search(r'\.\s+\S', text):
+            return False
+        return True
+
+    @staticmethod
+    def _split_blocks(body):
+        """Separa el texto generado en bloques (párrafos y subtítulos).
+
+        El prompt le pide al modelo separar cada párrafo con '\\n\\n\\n'. Antes
+        se hacía body.split('\\n') descartando las líneas vacías, con lo que
+        esa separación se perdía por completo y todo quedaba pegado.
+        """
+        # Se corta por cualquier racha de saltos: el modelo no es consistente
+        # (a veces usa '\n\n\n', a veces uno solo) y en este formato nunca
+        # parte un mismo párrafo en varias líneas.
+        return [b.strip() for b in re.split(r'[\r\n]+', body) if b.strip()]
+
     @staticmethod
     def parrafos(body, document, topic, flag):
-        """Agrega párrafos al documento con título como Heading para el TOC."""
-        if body != '':
-            # Título de sección con estilo Heading 1 (para que el TOC lo detecte)
-            p = document.add_paragraph(topic)
-            try:
-                p.style = document.styles['Heading 1']
-            except KeyError:
-                pass  # Si no existe Heading 1, usar formato manual
-            p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-            p.paragraph_format.line_spacing = Pt(21)
-            # Asegurar fuente Arial negrita para el heading
-            for run in p.runs:
-                run.font.name = 'Arial'
-                run.font.size = Pt(14)
-                run.bold = True
-                run.font.color.rgb = RGBColor(0, 0, 0)
+        """Agrega una sección al documento: título, subtítulos y párrafos.
 
-            document.add_paragraph('').alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        El título de sección va con nivel de esquema 1 y cada subtítulo
+        detectado con nivel 2, que es lo que hace que ambos aparezcan en el
+        índice.
+        """
+        if body == '':
+            return
 
-            # Filtrar líneas vacías SIN mutar la lista durante iteración (bug fix)
-            paragraphs = [line for line in body.split('\n') if line.strip()]
+        # ── Título de la sección (nivel 1 del índice) ──
+        p = document.add_paragraph(topic)
+        try:
+            p.style = document.styles['Heading 1']
+        except KeyError:
+            pass  # Si no existe Heading 1, el formato manual de abajo basta
+        p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        p.paragraph_format.line_spacing = Pt(21)
+        p.paragraph_format.space_after = Pt(18)
+        Document_process.set_outline_level(p, 0)
+        for run in p.runs:
+            run.font.name = 'Arial'
+            run.font.size = Pt(14)
+            run.bold = True
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
-            for parrafo in paragraphs:
-                p = document.add_paragraph(parrafo)
-                p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
-                p.paragraph_format.line_spacing = Pt(21)
+        # ── Cuerpo ──
+        for block in Document_process._split_blocks(body):
+            text = Document_process._clean_markdown(block)
+            if not text:
+                continue
 
-            Document_process.docx_replace(document, '\r', '')
-            Document_process.docx_replace(document, '\n', '')
+            if Document_process._is_subtitle(block):
+                sp = document.add_paragraph(text)
+                try:
+                    sp.style = document.styles['Heading 2']
+                except KeyError:
+                    pass
+                sp.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+                sp.paragraph_format.line_spacing = Pt(21)
+                sp.paragraph_format.space_before = Pt(12)
+                sp.paragraph_format.space_after = Pt(6)
+                Document_process.set_outline_level(sp, 1)
+                for run in sp.runs:
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
+                    run.bold = True
+                    run.font.color.rgb = RGBColor(0, 0, 0)
+            else:
+                bp = document.add_paragraph(text)
+                bp.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+                bp.paragraph_format.line_spacing = Pt(21)
+                # Separación real entre párrafos (antes quedaban pegados)
+                bp.paragraph_format.space_after = Pt(12)
+                for run in bp.runs:
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(12)
 
-            if flag:
-                document.add_page_break()
+        if flag:
+            document.add_page_break()
 
     # ── Underline helpers ──────────────────────────────────────────────
 

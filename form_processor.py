@@ -179,7 +179,7 @@ class FormProcessor:
         palabras = cadena.split()
         palabras_capitalizadas = []
         for palabra in palabras:
-            if palabra.lower() in ['de', 'del', 'la', 'las', 'los', 'y', 'para'] and palabras_capitalizadas != []:
+            if palabra.lower() in ['de', 'del', 'la', 'las', 'los', 'y', 'para', 'sus', 'su', 'al'] and palabras_capitalizadas != []:
                 palabras_capitalizadas.append(palabra.lower())
             else:
                 palabras_capitalizadas.append(palabra.capitalize())

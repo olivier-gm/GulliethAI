@@ -1,5 +1,7 @@
 import os
+import re
 import shutil
+import zipfile
 import pytest
 from docx import Document
 from algorythms import Document_process
@@ -63,11 +65,16 @@ def test_document_generation_with_toc_and_logo():
     doc = Document(TEST_OUTPUT_DOCX)
     
     # 1. Verify TOC field is present in the XML
+    # Nota: doc.element.xml devuelve str, no bytes. Y si LibreOffice esta
+    # instalado, el docx final pasa por el (para poblar el indice), que
+    # reordena los switches del campo, asi que no se compara el literal exacto.
     xml_content = doc.element.xml
-    assert b'w:fldChar' in xml_content, "TOC field was not added (fldChar missing)."
-    assert b'TOC \\o "1-2" \\h \\z \\u' in xml_content or b'TOC \\o &quot;1-2&quot; \\h \\z \\u' in xml_content, "TOC instruction text not found."
-    assert b'w:updateFields' in xml_content, "updateFields for TOC refresh not found."
-    
+    assert 'w:fldChar' in xml_content, "TOC field was not added (fldChar missing)."
+
+    instr = ' '.join(re.findall(r'<w:instrText[^>]*>([^<]*)</w:instrText>', xml_content))
+    assert 'TOC' in instr, "TOC instruction text not found."
+    assert '1-3' in instr, "El campo TOC deberia abarcar los niveles 1 a 3."
+
     # 2. Verify Headings are applied
     heading_found = False
     for p in doc.paragraphs:
@@ -75,6 +82,15 @@ def test_document_generation_with_toc_and_logo():
             heading_found = True
             break
     assert heading_found, "Heading 1 style was not correctly applied to body topic."
+
+    # 3. Los encabezados deben declarar nivel de esquema; sin esto el indice
+    #    sale vacio ("no se encontraron entradas de tabla de contenido").
+    #    Puede estar en el parrafo (document.xml) o, si LibreOffice reescribio
+    #    el archivo, en la definicion del estilo (styles.xml).
+    with zipfile.ZipFile(TEST_OUTPUT_DOCX) as z:
+        styles_xml = z.read('word/styles.xml').decode('utf-8')
+    assert 'w:outlineLvl' in xml_content or 'outlineLvl' in styles_xml, \
+        "Los encabezados no declaran nivel de esquema: el indice saldria vacio."
 
 def test_logo_insertion_unknown_university():
     # Should not crash if the university is unknown and has no logo
@@ -86,8 +102,67 @@ def test_logo_insertion_unknown_university():
         introduction='', 
         essay_content='Body only', 
         conclusion='', 
-        head_title='Title', 
+        head_title='Title',
         id='uni',
         university_name='Unknown University XYZ'
     )
     assert os.path.exists(TEST_OUTPUT_DOCX), "Document should generate successfully even if logo is missing."
+
+
+# ── Separacion de parrafos y deteccion de subtitulos ───────────────────
+# El modelo separa los parrafos con '\n\n\n'; antes esa separacion se perdia
+# y todo el texto quedaba pegado en el documento.
+
+def test_split_blocks_respeta_la_separacion_del_modelo():
+    body = "Primer parrafo.\n\n\nUn Subtitulo\n\n\nSegundo parrafo."
+    assert Document_process._split_blocks(body) == [
+        'Primer parrafo.', 'Un Subtitulo', 'Segundo parrafo.',
+    ]
+
+
+def test_split_blocks_con_saltos_simples():
+    # Si el modelo no deja lineas en blanco, se separa por saltos simples
+    body = "Primer parrafo.\nSegundo parrafo."
+    assert Document_process._split_blocks(body) == [
+        'Primer parrafo.', 'Segundo parrafo.',
+    ]
+
+
+def test_split_blocks_con_separadores_mezclados():
+    # El modelo no es consistente: mezcla '\n' y '\n\n\n' en un mismo texto
+    body = "Uno.\nDos.\n\n\nTres.\r\n\r\nCuatro."
+    assert Document_process._split_blocks(body) == [
+        'Uno.', 'Dos.', 'Tres.', 'Cuatro.',
+    ]
+
+
+@pytest.mark.parametrize('linea', [
+    'Origen y Fundamentos del Bitcoin',
+    'Adopcion Institucional y Marcos Regulatorios',
+    'Membrana Plasmatica:',
+    '**Subtitulo en negrita**',
+    '## Subtitulo markdown',
+    # Un subtitulo puede cerrar con parentesis: antes se descartaban y no
+    # salian ni en negrita ni en el indice
+    'Capa 1 (Layer 1): La Cadena Principal (On-Chain)',
+    'Capa 2 (Layer 2): Soluciones de Escalabilidad (Off-Chain)',
+])
+def test_detecta_subtitulos(linea):
+    assert Document_process._is_subtitle(linea)
+
+
+@pytest.mark.parametrize('linea', [
+    'El Bitcoin, introducido en 2008 bajo el seudonimo de Satoshi Nakamoto, representa la primera '
+    'implementacion exitosa de una moneda digital descentralizada.',
+    'La arquitectura combina criptografia asimetrica y teoria de juegos.',
+    'Una frase corta que termina en punto.',
+    # Cierra con parentesis pero la frase termina en punto: sigue siendo parrafo
+    'Esto es un ejemplo entre parentesis (con cierre.)',
+])
+def test_no_confunde_parrafos_con_subtitulos(linea):
+    assert not Document_process._is_subtitle(linea)
+
+
+def test_limpia_marcadores_markdown():
+    assert Document_process._clean_markdown('## Titulo') == 'Titulo'
+    assert Document_process._clean_markdown('**Titulo**') == 'Titulo'
