@@ -68,6 +68,39 @@ def main():
     desktop = ctx.ServiceManager.createInstanceWithContext(
         'com.sun.star.frame.Desktop', ctx)
 
+    # Desactiva el comprobador de actualizaciones de LibreOffice.
+    # Combina dos enfoques para cubrir todas las versiones:
+    #   - CheckInterval=0 en el nodo Jobs (persiste en el perfil)
+    #   - AutoCheckEnabled=False en el nodo Product (disponible en LO ≥ 7)
+    try:
+        cfg = ctx.ServiceManager.createInstanceWithContext(
+            'com.sun.star.configuration.ConfigurationProvider', ctx)
+
+        def _cfg_write(nodepath):
+            return cfg.createInstanceWithArguments(
+                'com.sun.star.configuration.ConfigurationUpdateAccess',
+                (_pv('nodepath', nodepath),),
+            )
+
+        try:
+            jobs = _cfg_write(
+                '/org.openoffice.Office.Jobs/Jobs'
+                '/org.openoffice.Office.Jobs:UpdateCheck/Arguments'
+            )
+            jobs.replaceByName('CheckInterval', 0)
+            jobs.commitChanges()
+        except Exception:
+            pass
+
+        try:
+            prod = _cfg_write('/org.openoffice.Office.Update/Update')
+            prod.replaceByName('AutoCheckEnabled', False)
+            prod.commitChanges()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     doc = None
     try:
         doc = desktop.loadComponentFromURL(

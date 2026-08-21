@@ -91,10 +91,16 @@ class Document_process:
 
         # Una sola conversión a la vez: LibreOffice es de instancia única y dos
         # procesos simultáneos se bloquean entre sí.
+        # SAL_DISABLE_UPDATECHECK=1: suprime el diálogo de actualización de
+        # LibreOffice. Sin esto, si hay conexión lenta o actualización pendiente,
+        # el diálogo bloquea el proceso headless y la conversión falla.
+        env = os.environ.copy()
+        env['SAL_DISABLE_UPDATECHECK'] = '1'
+
         with Document_process._LO_LOCK:
             try:
                 result = subprocess.run(
-                    command, timeout=150, capture_output=True, text=True,
+                    command, timeout=150, capture_output=True, text=True, env=env,
                 )
             except subprocess.TimeoutExpired:
                 logger.error('Timeout actualizando el índice con LibreOffice: %s', input_file)
@@ -162,13 +168,60 @@ class Document_process:
 
     @staticmethod
     def llenar_campos(replacements, document):
-        """Reemplaza placeholders preservando el formato de los runs."""
+        """Reemplaza placeholders preservando el formato de los runs.
+
+        No basta con buscar la clave dentro de cada run por separado: Word
+        parte el texto de un párrafo en varios <w:r> por motivos internos
+        (ediciones previas, distinto rsid, etc.), y algunas plantillas traen
+        placeholders como '[teacher]' repartidos en dos runs ('[' por un
+        lado, 'teacher]' por otro). En ese caso ningún run contiene la clave
+        completa y el placeholder se queda tal cual, sin reemplazar. Por eso
+        aquí se arma el texto completo del párrafo y se ubica la clave ahí,
+        sin importar en cuántos runs esté repartida.
+        """
         for paragraph in document.paragraphs:
             for key, value in replacements.items():
-                if key in paragraph.text:
-                    for run in paragraph.runs:
-                        if key in run.text:
-                            run.text = run.text.replace(key, value)
+                Document_process._replace_in_paragraph(paragraph, key, value)
+
+    @staticmethod
+    def _replace_in_paragraph(paragraph, key, value):
+        """Sustituye todas las ocurrencias de `key` en un párrafo, aunque
+        estén repartidas entre varios runs. El formato que se conserva es
+        el del run donde empieza la coincidencia."""
+        while True:
+            runs = paragraph.runs
+            if not runs:
+                return
+
+            full_text = ''.join(r.text for r in runs)
+            pos = full_text.find(key)
+            if pos == -1:
+                return
+            end = pos + len(key)
+
+            cursor = 0
+            start_run_idx = start_offset = None
+            end_run_idx = end_offset = None
+            for i, r in enumerate(runs):
+                r_start, r_end = cursor, cursor + len(r.text)
+                if start_run_idx is None and r_start <= pos < r_end:
+                    start_run_idx, start_offset = i, pos - r_start
+                if r_start < end <= r_end:
+                    end_run_idx, end_offset = i, end - r_start
+                    break
+                cursor = r_end
+            if start_run_idx is None or end_run_idx is None:
+                return
+
+            if start_run_idx == end_run_idx:
+                r = runs[start_run_idx]
+                r.text = r.text[:start_offset] + value + r.text[end_offset:]
+            else:
+                first, last = runs[start_run_idx], runs[end_run_idx]
+                first.text = first.text[:start_offset] + value
+                for i in range(start_run_idx + 1, end_run_idx):
+                    runs[i].text = ''
+                last.text = last.text[end_offset:]
 
     @staticmethod
     def capitalizar_frases(cadena):
@@ -212,7 +265,126 @@ class Document_process:
             except Exception as error:
                 logger.warning("Error eliminando archivo: %s", error)
 
+    # ── Posicionamiento absoluto en la portada ─────────────────────────
+
+    @staticmethod
+    def _find_paragraph(document, marker, exact=False):
+        """Ubica un párrafo por su marcador de placeholder ('[title]', etc.)
+        en vez de por índice fijo. Un índice numérico (document.paragraphs[17])
+        se desalinea apenas cambia la estructura de arriba: por ejemplo,
+        insert_logo() antepone un párrafo nuevo y corre todos los índices
+        posteriores en +1. Buscar por el texto del marcador es inmune a eso."""
+        for p in document.paragraphs:
+            if (p.text == marker) if exact else (marker in p.text):
+                return p
+        return None
+
+    @staticmethod
+    def _anchor_paragraph_to_page(document, paragraph, y_align, x_align='center'):
+        """Fija el párrafo en una posición absoluta de la página (marco
+        clásico de Word/LibreOffice: w:framePr) y lo saca del flujo normal.
+
+        Se usa para el título de portada (siempre centrado verticalmente) y
+        la línea de fecha/lugar (siempre al pie), que antes se lograban
+        contando párrafos en blanco antes/después. Ese conteo fijo se
+        descuadraba con cualquier variación de contenido: la presencia o no
+        del logo, el nombre de la universidad ocupando una o dos líneas, o
+        cuántos integrantes se llenaron. Con el párrafo anclado a la página,
+        su posición ya no depende de nada de lo anterior.
+        """
+        section = document.sections[0]
+        width = section.page_width - section.left_margin - section.right_margin
+
+        pPr = paragraph._p.get_or_add_pPr()
+        for old in pPr.findall(qn('w:framePr')):
+            pPr.remove(old)
+
+        frame = OxmlElement('w:framePr')
+        frame.set(qn('w:w'), str(width))
+        frame.set(qn('w:h'), '720')
+        frame.set(qn('w:hRule'), 'auto')
+        frame.set(qn('w:hAnchor'), 'page')
+        frame.set(qn('w:vAnchor'), 'page')
+        frame.set(qn('w:xAlign'), x_align)
+        frame.set(qn('w:yAlign'), y_align)
+        # w:framePr debe ir antes que w:tabs/w:spacing/w:jc dentro de pPr
+        # (orden que exige el esquema CT_PPrBase); estos párrafos no traen
+        # pStyle/keepNext/pageBreakBefore, así que va siempre primero.
+        pPr.insert(0, frame)
+
     # ── TOC (Tabla de Contenido) ───────────────────────────────────────
+
+    @staticmethod
+    def _has_drawing(paragraph):
+        """True si el párrafo trae una imagen/dibujo (aunque no tenga texto)."""
+        return bool(
+            paragraph._p.findall('.//' + qn('w:drawing'))
+            or paragraph._p.findall('.//' + qn('w:pict'))
+        )
+
+    # Constantes calibradas empíricamente contra la plantilla real (tamaño
+    # Carta, márgenes de 1"): posición Y (en puntos, desde el tope de la
+    # página) donde termina el bloque de encabezado según haya o no logo y
+    # según el nombre de la universidad quepa en una o dos líneas.
+    _HEADER_END_BASE_PT = 150       # sin logo, nombre en 1 línea
+    _HEADER_END_WRAP_EXTRA_PT = 16  # nombre en 2 líneas
+    _HEADER_END_LOGO_EXTRA_PT = 86  # logo presente
+    _HEADER_NAME_WRAP_THRESHOLD = 50  # a partir de este largo, se asume 2 líneas
+    # Y mínima a la que puede empezar el pie sin invadir el título (anclado
+    # al centro exacto de la página, ~396pt), con margen para títulos de
+    # hasta 2-3 líneas.
+    _TITLE_CLEAR_ZONE_PT = 440
+    _MIN_SPACER_PT = 20
+
+    @staticmethod
+    def _trim_cover_spacers(document, title_para, has_logo=False, university_name=''):
+        """Reemplaza los 22 párrafos en blanco que rodean el título por UNO
+        solo, con la altura exacta que hace falta para que el pie de página
+        (docente/integrantes) nunca choque con el título ni se desborde a
+        una segunda página.
+
+        Esos 22 párrafos eran el mecanismo original para 'empujar' el
+        título al centro y el pie hacia abajo contando líneas a mano. Con el
+        título y la fecha ya anclados a una posición absoluta de la página
+        (ver _anchor_paragraph_to_page), un conteo FIJO de líneas en blanco
+        no puede servir a la vez a los dos casos límite: si es lo bastante
+        grande para no chocar con el título cuando el encabezado es corto
+        (sin logo, nombre corto), sobra espacio y empuja el pie fuera de la
+        página cuando el encabezado además es alto (con logo, nombre largo)
+        + hay muchos integrantes. Por eso se calcula la altura del espaciador
+        en función de lo que sí se conoce en el momento de generar el
+        documento (si hay logo, si el nombre es largo), de modo que el pie
+        arranque siempre en el mismo punto seguro sin importar el encabezado.
+        """
+        all_paragraphs = document.paragraphs
+        title_idx = next(
+            i for i, p in enumerate(all_paragraphs) if p._p is title_para._p
+        )
+
+        def is_removable_blank(p):
+            return p.text.strip() == '' and not Document_process._has_drawing(p)
+
+        before = [p for p in all_paragraphs[:title_idx] if is_removable_blank(p)]
+        after = [p for p in all_paragraphs[title_idx + 1:] if is_removable_blank(p)]
+        blanks = before + after
+        if not blanks:
+            return
+
+        spacer = blanks[0]
+        for p in blanks[1:]:
+            Document_process.delete_paragraph(p)
+
+        header_end = Document_process._HEADER_END_BASE_PT
+        if len(university_name) >= Document_process._HEADER_NAME_WRAP_THRESHOLD:
+            header_end += Document_process._HEADER_END_WRAP_EXTRA_PT
+        if has_logo:
+            header_end += Document_process._HEADER_END_LOGO_EXTRA_PT
+
+        needed_pt = max(
+            Document_process._MIN_SPACER_PT,
+            Document_process._TITLE_CLEAR_ZONE_PT - header_end,
+        )
+        spacer.paragraph_format.space_after = Pt(needed_pt)
 
     @staticmethod
     def set_outline_level(paragraph, level):
@@ -265,6 +437,15 @@ class Document_process:
     @staticmethod
     def add_toc_page(document):
         """Inserta una página de Tabla de Contenido usando campos OOXML nativos."""
+        # Salto de página explícito ANTES del título. Sin esto, "Índice"
+        # aparecía en la posición donde el flujo normal de texto terminara
+        # de llenar la página de portada: si el contenido de la portada era
+        # corto, quedaba pegado justo debajo de la fecha en la misma página
+        # 1; si era largo, se corría más abajo en la página 2. Un salto de
+        # página real garantiza que siempre empiece arriba de su propia
+        # página, sin importar cuánto contenido variable tenga la portada.
+        document.add_page_break()
+
         # Título "Índice"
         p_title = document.add_paragraph()
         p_title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
@@ -340,9 +521,11 @@ class Document_process:
 
     @staticmethod
     def insert_logo(document, university_name, logo_dir='static/logos'):
-        """Inserta el logo de la universidad centrado en la parte superior del documento."""
+        """Inserta el logo de la universidad centrado en la parte superior del
+        documento. Devuelve True si lo encontró e insertó, False si no
+        (se usa para calcular cuánto espacio reservar en _trim_cover_spacers)."""
         if not university_name or not university_name.strip():
-            return
+            return False
 
         normalized = Document_process._normalize_logo_name(university_name)
         logo_path = None
@@ -357,7 +540,7 @@ class Document_process:
         if logo_path is None:
             logger.info('Logo no encontrado para universidad: %s (buscado como: %s)',
                         university_name, normalized)
-            return
+            return False
 
         try:
             # Insertar el logo al principio del documento, centrado
@@ -383,8 +566,10 @@ class Document_process:
             run.add_picture(logo_path, width=Cm(3))
 
             logger.info('Logo insertado: %s', logo_path)
+            return True
         except Exception as e:
             logger.error('Error insertando logo: %s', e)
+            return False
 
     # ── Generación de párrafos con estilos ─────────────────────────────
 
@@ -516,13 +701,22 @@ class Document_process:
 
     @staticmethod
     def underline_words_in_first_page(doc, words):
-        # Calcular rango seguro basado en la cantidad real de párrafos
-        max_para = len(doc.paragraphs)
-        start = min(24, max_para)
-        end = min(37, max_para)
-
-        for i in range(start, end):
-            paragraph = doc.paragraphs[i]
+        # Se recorren TODOS los párrafos existentes en este momento, no un
+        # rango de índices fijo (24-37): en esta etapa del pipeline el
+        # documento sólo tiene los párrafos de la portada (el índice y el
+        # contenido se agregan después), así que no hace falta acotar nada.
+        # Un rango fijo se desalineaba en cuanto insert_logo() anteponía un
+        # párrafo (el logo) y corría todo lo demás un índice hacia abajo.
+        #
+        # Sólo se reconstruyen los runs de párrafos que SÍ contienen alguna
+        # palabra clave. Es necesario filtrar así y no sólo iterar todos:
+        # reconstruir runs implica llamar run.clear(), que borra cualquier
+        # contenido del run, incluida una imagen si la lleva (como el run
+        # del logo, que no tiene texto pero sí un <w:drawing>). Sin este
+        # filtro, ese párrafo se vaciaba igual y el logo desaparecía.
+        for paragraph in doc.paragraphs:
+            if not any(word in paragraph.text for word in words):
+                continue
             new_runs = []
             for run in paragraph.runs:
                 found = False
@@ -560,7 +754,27 @@ class Document_process:
         document = Document(template_path)
 
         # Insertar logo de la universidad (centrado arriba en portada)
-        Document_process.insert_logo(document, university_name)
+        has_logo = Document_process.insert_logo(document, university_name)
+
+        # Ubicar el título y la línea de fecha/lugar por su marcador, ANTES
+        # de reemplazar los placeholders (mientras el texto sigue siendo
+        # literalmente '[title]'/'[date]', que es inconfundible). Buscarlos
+        # por índice fijo se rompía apenas insert_logo() anteponía un
+        # párrafo y corría todo lo demás.
+        title_para = Document_process._find_paragraph(document, '[title]', exact=True)
+        date_para = Document_process._find_paragraph(document, '[date]')
+
+        # Recortar los párrafos en blanco que ya no cumplen ningún propósito
+        # de posicionamiento (ver _trim_cover_spacers) y reservar sólo el
+        # espacio que hace falta según haya o no logo y el largo real del
+        # nombre de la universidad. Debe ir antes de llenar_campos: usa el
+        # texto vacío para detectar los blancos, y llenar_campos no los toca
+        # de todas formas.
+        if title_para is not None:
+            Document_process._trim_cover_spacers(
+                document, title_para,
+                has_logo=has_logo, university_name=replacements.get('[u]', ''),
+            )
 
         # Llenar campos de la plantilla
         Document_process.llenar_campos(replacements, document)
@@ -575,14 +789,24 @@ class Document_process:
         # Configurar estilos de Heading para el TOC
         Document_process._configure_heading_styles(document)
 
-        # Tamaño del título principal en portada
-        try:
-            paragraph = document.paragraphs[17]
-            if paragraph.runs:
-                run = paragraph.runs[0]
-                run.font.size = Pt(17.5)
-        except (IndexError, AttributeError):
-            logger.warning('No se pudo ajustar el tamaño del título en la portada')
+        # Título principal: tamaño de fuente y anclado al centro exacto de
+        # la página. Anclarlo lo saca del flujo normal, así que queda
+        # centrado siempre, sin importar si hay logo arriba, si el nombre
+        # de la universidad ocupa una o dos líneas, o cuántos integrantes
+        # se listen debajo.
+        if title_para is not None and title_para.runs:
+            title_para.runs[0].font.size = Pt(17.5)
+            Document_process._anchor_paragraph_to_page(document, title_para, y_align='center')
+        else:
+            logger.warning('No se pudo ubicar/anclar el título en la portada')
+
+        # Línea de fecha y lugar: anclada al pie de la página, siempre en
+        # la misma posición sin importar cuánto ocupe el bloque de
+        # docente/integrantes que va justo encima.
+        if date_para is not None:
+            Document_process._anchor_paragraph_to_page(document, date_para, y_align='bottom')
+        else:
+            logger.warning('No se pudo ubicar/anclar la línea de fecha en la portada')
 
         has_content = essay_content != '' or introduction != '' or conclusion != ''
 

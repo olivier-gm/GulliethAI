@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-MODEL_NAME = "gemini-3.6-flash"
+MODEL_NAME = "gemini-3.5-flash"
 
 # Caché de contexto explícito de Gemini para los bloques fijos de instrucción
 # + ejemplos few-shot (son estáticos: no cambian entre peticiones ni entre

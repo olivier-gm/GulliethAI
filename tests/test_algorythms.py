@@ -8,6 +8,9 @@ from algorythms import Document_process
 
 # Assume current working directory during tests is the project root
 TEMPLATE_PATH = 'Templates/Universitario.docx'
+# La plantilla real de producción (con los placeholders '[title]', '[date]',
+# etc.), a diferencia de TEMPLATE_PATH que es un docx dummy de relleno.
+REAL_TEMPLATE_PATH = 'input/plantilla.docx'
 TEST_OUTPUT_DIR = 'tests/output'
 TEST_OUTPUT_DOCX = os.path.join(TEST_OUTPUT_DIR, 'test_output.docx')
 TEST_OUTPUT_PDF = os.path.join('output', 'test_output.pdf') # hardcoded in app logic
@@ -166,3 +169,121 @@ def test_no_confunde_parrafos_con_subtitulos(linea):
 def test_limpia_marcadores_markdown():
     assert Document_process._clean_markdown('## Titulo') == 'Titulo'
     assert Document_process._clean_markdown('**Titulo**') == 'Titulo'
+
+
+# ── Portada de una sola página: título centrado, fecha al pie ──────────
+# El título y la fecha se anclan con w:framePr a una posición absoluta de
+# la página (independiente del logo, el largo del nombre de la universidad
+# o la cantidad de integrantes). Los 22 párrafos en blanco que antes
+# simulaban ese centrado ya no hacen falta y se recortan a uno solo, cuya
+# altura se calcula para que el pie de página nunca choque con el título
+# ni se desborde a una segunda página.
+
+def test_trim_cover_spacers_reduce_los_parrafos_en_blanco():
+    doc = Document(REAL_TEMPLATE_PATH)
+    title_para = Document_process._find_paragraph(doc, '[title]', exact=True)
+    assert title_para is not None
+
+    blancos_antes = sum(1 for p in doc.paragraphs if p.text.strip() == '')
+    Document_process._trim_cover_spacers(doc, title_para, has_logo=False, university_name='UCV')
+    blancos_despues = sum(1 for p in doc.paragraphs if p.text.strip() == '')
+
+    # Sólo debe quedar un párrafo en blanco (el espaciador calculado).
+    assert blancos_despues == 1
+    assert blancos_despues < blancos_antes
+
+
+@pytest.mark.parametrize('has_logo,university_name,esperado_pt', [
+    (False, 'UCV', 290),      # sin logo, nombre corto: espaciador grande
+    (True, 'UCV', 204),       # con logo: menos espaciador (el logo ya empuja)
+    (False, 'U' * 60, 274),   # nombre largo (2 lineas): un poco menos
+    (True, 'U' * 60, 188),    # logo + nombre largo: el que menos necesita
+])
+def test_trim_cover_spacers_calcula_el_espaciador_segun_encabezado(
+    has_logo, university_name, esperado_pt
+):
+    # Los valores esperados salen de la misma fórmula que usa el código
+    # (_TITLE_CLEAR_ZONE_PT menos lo que ya empuja el encabezado hacia
+    # abajo); lo que importa no es memorizar constantes sino que el
+    # espaciador SIEMPRE se reduzca a medida que el logo y/o el nombre
+    # largo ya empujan el encabezado: si no se reduce, el pie de página se
+    # desborda a una segunda página cuando además hay muchos integrantes
+    # (bug real que motivó este ajuste).
+    doc = Document(REAL_TEMPLATE_PATH)
+    title_para = Document_process._find_paragraph(doc, '[title]', exact=True)
+    Document_process._trim_cover_spacers(
+        doc, title_para, has_logo=has_logo, university_name=university_name,
+    )
+    spacer = next(p for p in doc.paragraphs if p.text.strip() == '')
+    space_after_pt = spacer.paragraph_format.space_after.pt
+    assert abs(space_after_pt - esperado_pt) < 5
+
+
+def test_trim_cover_spacers_con_logo_y_nombre_largo_reserva_lo_minimo():
+    """El caso con más 'empuje' propio (logo + nombre largo) debe ser el
+    que menos espaciador artificial necesite de los cuatro combinados."""
+    resultados = {}
+    for has_logo in (False, True):
+        for nombre_largo in (False, True):
+            doc = Document(REAL_TEMPLATE_PATH)
+            title_para = Document_process._find_paragraph(doc, '[title]', exact=True)
+            uni = 'U' * 60 if nombre_largo else 'UCV'
+            Document_process._trim_cover_spacers(
+                doc, title_para, has_logo=has_logo, university_name=uni,
+            )
+            spacer = next(p for p in doc.paragraphs if p.text.strip() == '')
+            resultados[(has_logo, nombre_largo)] = spacer.paragraph_format.space_after.pt
+
+    assert resultados[(True, True)] < resultados[(False, False)]
+    assert resultados[(True, False)] < resultados[(False, False)]
+    assert resultados[(False, True)] < resultados[(False, False)]
+
+
+def test_insert_logo_devuelve_false_si_no_encuentra_el_logo():
+    doc = Document(REAL_TEMPLATE_PATH)
+    assert Document_process.insert_logo(doc, 'Universidad Inexistente XYZ') is False
+
+
+def test_insert_logo_devuelve_true_si_lo_encuentra():
+    doc = Document(REAL_TEMPLATE_PATH)
+    assert Document_process.insert_logo(doc, 'Universidad Central de Venezuela') is True
+
+
+def test_underline_words_no_borra_el_logo():
+    """Regresión: reconstruir los runs de TODOS los párrafos (para
+    subrayar palabras clave) borraba el run del logo aunque no tuviera
+    texto, porque run.clear() elimina cualquier contenido, incluida una
+    imagen. Ahora sólo se tocan párrafos que sí contienen alguna palabra."""
+    doc = Document(REAL_TEMPLATE_PATH)
+    Document_process.insert_logo(doc, 'Universidad Central de Venezuela')
+    Document_process.underline_words_in_first_page(
+        doc, ['DOCENTE:', 'ALUMNOS:', 'ALUMNO:', 'SECCION:', 'MATERIA:']
+    )
+    assert Document_process._has_drawing(doc.paragraphs[0])
+
+
+def test_fill_placeholders_caso_extremo_no_lanza_excepcion():
+    """Universidad de nombre largo, todos los campos al máximo permitido
+    por el formulario y los 8 integrantes llenos: no debe romper la
+    generación (aunque no podemos medir el conteo real de páginas sin
+    LibreOffice instalado, al menos la construcción del documento no debe
+    fallar)."""
+    reps = {
+        '[u]': 'U' * 80, '[area]': 'A' * 40, '[carrera]': 'C' * 40,
+        '[city]': 'CARACAS, ', '[date]': '20 DE AGOSTO DE 2026',
+        '[seccion]': 'SECCION: "X"', '[title]': 'TITULO DE PRUEBA',
+        '[docente]': 'DOCENTE:', '[teacher]': 'T' * 60,
+        '[asignatura]': 'M' * 60, '[asignatura2]': '', '[asignatura_t]': 'MATERIA: ',
+        '[periodo]': '', '[academico]': 'SEMESTRE: ', '[academico2]': '', '[periodo2]': '',
+        '[alumnos]': 'ALUMNOS:',
+    }
+    for i in range(1, 9):
+        reps[f'[{i}]'] = 'ESTUDIANTE ' * 3
+        reps[f'[id{i}]'] = ' C.I- 1234567890'
+
+    out = os.path.join(TEST_OUTPUT_DIR, 'extreme.docx')
+    Document_process.fill_placeholders(
+        out, REAL_TEMPLATE_PATH, '', reps, '', '', '', 'Cuerpo', 'uni',
+        university_name='Universidad Central de Venezuela',
+    )
+    assert os.path.exists(out)
