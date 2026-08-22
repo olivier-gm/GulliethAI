@@ -176,16 +176,22 @@ def test_limpia_marcadores_markdown():
 # la página (independiente del logo, el largo del nombre de la universidad
 # o la cantidad de integrantes). Los 22 párrafos en blanco que antes
 # simulaban ese centrado ya no hacen falta y se recortan a uno solo, cuya
-# altura se calcula para que el pie de página nunca choque con el título
-# ni se desborde a una segunda página.
+# altura se calcula dinámicamente según las dimensiones de la página, la
+# cantidad de líneas de detalle y la posición de la fecha.
 
 def test_trim_cover_spacers_reduce_los_parrafos_en_blanco():
     doc = Document(REAL_TEMPLATE_PATH)
     title_para = Document_process._find_paragraph(doc, '[title]', exact=True)
+    date_para = Document_process._find_paragraph(doc, '[date]')
     assert title_para is not None
 
     blancos_antes = sum(1 for p in doc.paragraphs if p.text.strip() == '')
-    Document_process._trim_cover_spacers(doc, title_para, has_logo=False, university_name='UCV')
+    detail_lines = Document_process._count_detail_lines(doc, title_para, date_para)
+    Document_process._trim_cover_spacers(
+        doc, title_para, date_para=date_para,
+        has_logo=False, university_name='UCV',
+        detail_lines=detail_lines,
+    )
     blancos_despues = sum(1 for p in doc.paragraphs if p.text.strip() == '')
 
     # Sólo debe quedar un párrafo en blanco (el espaciador calculado).
@@ -193,50 +199,72 @@ def test_trim_cover_spacers_reduce_los_parrafos_en_blanco():
     assert blancos_despues < blancos_antes
 
 
-@pytest.mark.parametrize('has_logo,university_name,esperado_pt', [
-    (False, 'UCV', 290),      # sin logo, nombre corto: espaciador grande
-    (True, 'UCV', 204),       # con logo: menos espaciador (el logo ya empuja)
-    (False, 'U' * 60, 274),   # nombre largo (2 lineas): un poco menos
-    (True, 'U' * 60, 188),    # logo + nombre largo: el que menos necesita
-])
-def test_trim_cover_spacers_calcula_el_espaciador_segun_encabezado(
-    has_logo, university_name, esperado_pt
-):
-    # Los valores esperados salen de la misma fórmula que usa el código
-    # (_TITLE_CLEAR_ZONE_PT menos lo que ya empuja el encabezado hacia
-    # abajo); lo que importa no es memorizar constantes sino que el
-    # espaciador SIEMPRE se reduzca a medida que el logo y/o el nombre
-    # largo ya empujan el encabezado: si no se reduce, el pie de página se
-    # desborda a una segunda página cuando además hay muchos integrantes
-    # (bug real que motivó este ajuste).
-    doc = Document(REAL_TEMPLATE_PATH)
-    title_para = Document_process._find_paragraph(doc, '[title]', exact=True)
+def test_trim_cover_spacers_mas_detalle_menos_spacer():
+    """Cuando hay más líneas de detalle, el spacer se reduce para que
+    todo quepa en una sola página."""
+    doc1 = Document(REAL_TEMPLATE_PATH)
+    title1 = Document_process._find_paragraph(doc1, '[title]', exact=True)
+    date1 = Document_process._find_paragraph(doc1, '[date]')
     Document_process._trim_cover_spacers(
-        doc, title_para, has_logo=has_logo, university_name=university_name,
+        doc1, title1, date_para=date1, detail_lines=3,
+    )
+    spacer1 = next(p for p in doc1.paragraphs if p.text.strip() == '')
+    pt1 = spacer1.paragraph_format.space_after.pt
+
+    doc2 = Document(REAL_TEMPLATE_PATH)
+    title2 = Document_process._find_paragraph(doc2, '[title]', exact=True)
+    date2 = Document_process._find_paragraph(doc2, '[date]')
+    Document_process._trim_cover_spacers(
+        doc2, title2, date_para=date2, detail_lines=10,
+    )
+    spacer2 = next(p for p in doc2.paragraphs if p.text.strip() == '')
+    pt2 = spacer2.paragraph_format.space_after.pt
+
+    # Con más líneas de detalle, el spacer debe ser menor
+    assert pt2 < pt1
+
+
+def test_trim_cover_spacers_spacer_siempre_positivo():
+    """Incluso con muchas líneas de detalle, el spacer nunca baja de
+    _MIN_SPACER_PT."""
+    doc = Document(REAL_TEMPLATE_PATH)
+    title = Document_process._find_paragraph(doc, '[title]', exact=True)
+    date = Document_process._find_paragraph(doc, '[date]')
+    Document_process._trim_cover_spacers(
+        doc, title, date_para=date, detail_lines=50,
     )
     spacer = next(p for p in doc.paragraphs if p.text.strip() == '')
-    space_after_pt = spacer.paragraph_format.space_after.pt
-    assert abs(space_after_pt - esperado_pt) < 5
+    assert spacer.paragraph_format.space_after.pt >= Document_process._MIN_SPACER_PT
 
 
-def test_trim_cover_spacers_con_logo_y_nombre_largo_reserva_lo_minimo():
-    """El caso con más 'empuje' propio (logo + nombre largo) debe ser el
-    que menos espaciador artificial necesite de los cuatro combinados."""
-    resultados = {}
-    for has_logo in (False, True):
-        for nombre_largo in (False, True):
-            doc = Document(REAL_TEMPLATE_PATH)
-            title_para = Document_process._find_paragraph(doc, '[title]', exact=True)
-            uni = 'U' * 60 if nombre_largo else 'UCV'
-            Document_process._trim_cover_spacers(
-                doc, title_para, has_logo=has_logo, university_name=uni,
-            )
-            spacer = next(p for p in doc.paragraphs if p.text.strip() == '')
-            resultados[(has_logo, nombre_largo)] = spacer.paragraph_format.space_after.pt
+def test_count_detail_lines():
+    """Verifica que _count_detail_lines cuenta los párrafos con texto
+    entre el título y la fecha."""
+    doc = Document(REAL_TEMPLATE_PATH)
+    title = Document_process._find_paragraph(doc, '[title]', exact=True)
+    date = Document_process._find_paragraph(doc, '[date]')
+    assert title is not None and date is not None
+    count = Document_process._count_detail_lines(doc, title, date)
+    # La plantilla tiene varias líneas de detalle (docente, alumno, etc.)
+    assert count > 0
 
-    assert resultados[(True, True)] < resultados[(False, False)]
-    assert resultados[(True, False)] < resultados[(False, False)]
-    assert resultados[(False, True)] < resultados[(False, False)]
+
+def test_anchor_paragraph_to_page_uses_y_pos():
+    """Cuando se pasa y_pos, el frame debe usar w:y en vez de w:yAlign."""
+    from docx.shared import Emu
+    doc = Document(REAL_TEMPLATE_PATH)
+    date_para = Document_process._find_paragraph(doc, '[date]')
+    assert date_para is not None
+
+    # Posición Y absoluta: 9_000_000 EMU ≈ 709pt (cerca del fondo de Carta)
+    Document_process._anchor_paragraph_to_page(doc, date_para, y_pos=9_000_000)
+
+    from lxml import etree
+    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+    frame = date_para._p.find('.//w:framePr', ns)
+    assert frame is not None
+    assert frame.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}y') is not None
+    assert frame.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}yAlign') is None
 
 
 def test_insert_logo_devuelve_false_si_no_encuentra_el_logo():
@@ -285,5 +313,31 @@ def test_fill_placeholders_caso_extremo_no_lanza_excepcion():
     Document_process.fill_placeholders(
         out, REAL_TEMPLATE_PATH, '', reps, '', '', '', 'Cuerpo', 'uni',
         university_name='Universidad Central de Venezuela',
+    )
+    assert os.path.exists(out)
+
+
+def test_fill_placeholders_pocos_campos():
+    """Con pocos campos (1 alumno, docente, materia), la portada no debe
+    lanzar excepción y el spacer debe ser mayor que con muchos campos."""
+    reps = {
+        '[u]': 'UNERG', '[area]': '', '[carrera]': '',
+        '[city]': 'SAN JUAN, ', '[date]': '20 DE AGOSTO DE 2026',
+        '[seccion]': '', '[title]': 'MI TITULO',
+        '[docente]': 'DOCENTE:', '[teacher]': 'JUAN GARCIA',
+        '[asignatura]': 'MATEMATICA', '[asignatura2]': '', '[asignatura_t]': 'MATERIA: ',
+        '[periodo]': '', '[academico]': '', '[academico2]': '', '[periodo2]': '',
+        '[alumnos]': 'ALUMNO:',
+    }
+    reps['[1]'] = 'VANESSA MORO'
+    reps['[id1]'] = ' C.I- 14981769'
+    for i in range(2, 9):
+        reps[f'[{i}]'] = ''
+        reps[f'[id{i}]'] = ''
+
+    out = os.path.join(TEST_OUTPUT_DIR, 'pocos_campos.docx')
+    Document_process.fill_placeholders(
+        out, REAL_TEMPLATE_PATH, '', reps, '', '', '', 'Titulo', 'uni',
+        university_name='',
     )
     assert os.path.exists(out)

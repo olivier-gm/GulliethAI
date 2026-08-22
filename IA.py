@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-MODEL_NAME = "gemini-3.5-flash"
+MODEL_NAME = "gemini-3.5-flash-lite"
 
 # Caché de contexto explícito de Gemini para los bloques fijos de instrucción
 # + ejemplos few-shot (son estáticos: no cambian entre peticiones ni entre
@@ -134,6 +134,7 @@ class _FewShotPrompt:
             )
 
     def _config(self, temperature, max_output_tokens):
+        search_tool = types.Tool(google_search=types.GoogleSearch())
         if self._cache_name:
             return types.GenerateContentConfig(
                 cached_content=self._cache_name,
@@ -143,6 +144,7 @@ class _FewShotPrompt:
                 max_output_tokens=max_output_tokens,
                 response_mime_type='text/plain',
                 safety_settings=SAFETY_SETTINGS,
+                tools=[search_tool],
             )
         return types.GenerateContentConfig(
             system_instruction=self.system_instruction,
@@ -152,6 +154,7 @@ class _FewShotPrompt:
             max_output_tokens=max_output_tokens,
             response_mime_type='text/plain',
             safety_settings=SAFETY_SETTINGS,
+            tools=[search_tool],
         )
 
     def _contents(self, user_text):
@@ -256,7 +259,7 @@ _intro_prompt = _FewShotPrompt(
 def generate_introduction(title, body):
     try:
         user_text = f"El título del trabajo es \'{title}\' y el texto es el siguiente: \"{body}\"."
-        text = _intro_prompt.generate(user_text, temperature=0.4, max_output_tokens=5000)
+        text = _intro_prompt.generate(user_text, temperature=0.5, max_output_tokens=5000)
         return _clean(text)
     except Exception as e:
         logger.error('Error generando introducción: %s', e)
@@ -289,7 +292,7 @@ _conclusion_prompt = _FewShotPrompt(
 def generate_conclusion(title, body):
     try:
         user_text = f"El título del trabajo es \'{title}\' y el texto es el siguiente: \"{body}\"."
-        text = _conclusion_prompt.generate(user_text, temperature=0.4, max_output_tokens=5000)
+        text = _conclusion_prompt.generate(user_text, temperature=0.5, max_output_tokens=5000)
         return _clean(text)
     except Exception as e:
         logger.error('Error generando conclusión: %s', e)

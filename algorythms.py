@@ -280,7 +280,8 @@ class Document_process:
         return None
 
     @staticmethod
-    def _anchor_paragraph_to_page(document, paragraph, y_align, x_align='center'):
+    def _anchor_paragraph_to_page(document, paragraph, y_align=None,
+                                   x_align='center', y_pos=None):
         """Fija el párrafo en una posición absoluta de la página (marco
         clásico de Word/LibreOffice: w:framePr) y lo saca del flujo normal.
 
@@ -291,6 +292,16 @@ class Document_process:
         del logo, el nombre de la universidad ocupando una o dos líneas, o
         cuántos integrantes se llenaron. Con el párrafo anclado a la página,
         su posición ya no depende de nada de lo anterior.
+
+        Parámetros:
+          y_align  – valor simbólico ('center', 'top', 'bottom').
+          y_pos    – posición Y absoluta en EMU (se convierte a twips
+                     internamente). Tiene prioridad sobre y_align.
+                     Usar esto en vez de y_align='bottom' corrige la
+                     diferencia de renderizado entre Word y LibreOffice:
+                     ambos respetan una coordenada numérica, mientras que
+                     'bottom' lo interpretan como el borde físico del
+                     papel, ignorando el margen inferior.
         """
         section = document.sections[0]
         width = section.page_width - section.left_margin - section.right_margin
@@ -306,7 +317,16 @@ class Document_process:
         frame.set(qn('w:hAnchor'), 'page')
         frame.set(qn('w:vAnchor'), 'page')
         frame.set(qn('w:xAlign'), x_align)
-        frame.set(qn('w:yAlign'), y_align)
+
+        if y_pos is not None:
+            # Convertir EMU a twips (1 twip = 914.4 EMU → 1 EMU ≈ twip/914.4)
+            twips = int(int(y_pos) / 914.4 * 20)  # EMU → pt → twips
+            # Corrección: 1 pt = 12700 EMU, 1 twip = 1/20 pt = 635 EMU
+            twips = int(int(y_pos) / 635)
+            frame.set(qn('w:y'), str(twips))
+        elif y_align is not None:
+            frame.set(qn('w:yAlign'), y_align)
+
         # w:framePr debe ir antes que w:tabs/w:spacing/w:jc dentro de pPr
         # (orden que exige el esquema CT_PPrBase); estos párrafos no traen
         # pStyle/keepNext/pageBreakBefore, así que va siempre primero.
@@ -330,31 +350,57 @@ class Document_process:
     _HEADER_END_WRAP_EXTRA_PT = 16  # nombre en 2 líneas
     _HEADER_END_LOGO_EXTRA_PT = 86  # logo presente
     _HEADER_NAME_WRAP_THRESHOLD = 50  # a partir de este largo, se asume 2 líneas
-    # Y mínima a la que puede empezar el pie sin invadir el título (anclado
-    # al centro exacto de la página, ~396pt), con margen para títulos de
-    # hasta 2-3 líneas.
-    _TITLE_CLEAR_ZONE_PT = 440
     _MIN_SPACER_PT = 20
 
-    @staticmethod
-    def _trim_cover_spacers(document, title_para, has_logo=False, university_name=''):
-        """Reemplaza los 22 párrafos en blanco que rodean el título por UNO
-        solo, con la altura exacta que hace falta para que el pie de página
-        (docente/integrantes) nunca choque con el título ni se desborde a
-        una segunda página.
+    # Altura estimada (en puntos) por cada línea de detalle (docente, etc.)
+    # en la portada: fuente de 12pt + interlineado.
+    _DETAIL_LINE_HEIGHT_PT = 16
+    # Altura objetivo para la línea de fecha desde el tope de la página.
+    # Se calcula dinámicamente en fill_placeholders, pero esta constante
+    # define el «colchón» entre la fecha y el margen inferior.
+    _DATE_BOTTOM_OFFSET_PT = 14
 
-        Esos 22 párrafos eran el mecanismo original para 'empujar' el
-        título al centro y el pie hacia abajo contando líneas a mano. Con el
-        título y la fecha ya anclados a una posición absoluta de la página
-        (ver _anchor_paragraph_to_page), un conteo FIJO de líneas en blanco
-        no puede servir a la vez a los dos casos límite: si es lo bastante
-        grande para no chocar con el título cuando el encabezado es corto
-        (sin logo, nombre corto), sobra espacio y empuja el pie fuera de la
-        página cuando el encabezado además es alto (con logo, nombre largo)
-        + hay muchos integrantes. Por eso se calcula la altura del espaciador
-        en función de lo que sí se conoce en el momento de generar el
-        documento (si hay logo, si el nombre es largo), de modo que el pie
-        arranque siempre en el mismo punto seguro sin importar el encabezado.
+    @staticmethod
+    def _count_detail_lines(document, title_para, date_para):
+        """Cuenta cuántas líneas de detalle (docente, alumno, materia, etc.)
+        hay entre el título y la línea de fecha en la plantilla.
+
+        Esto se usa para calcular cuánto espacio necesita el bloque de
+        detalle y ajustar el spacer para que ese bloque termine justo
+        encima de la fecha.
+        """
+        all_paragraphs = document.paragraphs
+        title_idx = next(
+            (i for i, p in enumerate(all_paragraphs) if p._p is title_para._p), -1
+        )
+        date_idx = next(
+            (i for i, p in enumerate(all_paragraphs) if p._p is date_para._p), len(all_paragraphs)
+        ) if date_para is not None else len(all_paragraphs)
+
+        count = 0
+        for p in all_paragraphs[title_idx + 1:date_idx]:
+            if p.text.strip() != '' and not Document_process._has_drawing(p):
+                count += 1
+        return count
+
+    @staticmethod
+    def _trim_cover_spacers(document, title_para, date_para=None,
+                             has_logo=False, university_name='',
+                             detail_lines=0):
+        """Reemplaza los 22 párrafos en blanco que rodean el título por UNO
+        solo, ubicado DESPUÉS del título, con la altura exacta para que el
+        bloque de detalle (docente/integrantes) quede justo encima de la
+        línea de fecha en el fondo de la página.
+
+        El cálculo es:
+          espacio_disponible = fecha_Y − título_centro_Y − margen_de_seguridad
+          espacio_detalle = detail_lines × _DETAIL_LINE_HEIGHT_PT
+          spacer = espacio_disponible − espacio_detalle
+
+        Esto garantiza que los campos de detalle (docente, alumno, materia,
+        sección, semestre) estén siempre cerca del fondo de la página,
+        separados solo por ~1 línea en blanco de la fecha/lugar, sin
+        importar cuántos campos se llenen ni si hay logo.
         """
         all_paragraphs = document.paragraphs
         title_idx = next(
@@ -365,14 +411,37 @@ class Document_process:
             return p.text.strip() == '' and not Document_process._has_drawing(p)
 
         before = [p for p in all_paragraphs[:title_idx] if is_removable_blank(p)]
-        after = [p for p in all_paragraphs[title_idx + 1:] if is_removable_blank(p)]
+        after_start = title_idx + 1
+        # No borrar párrafos en blanco que estén DESPUÉS de la fecha
+        if date_para is not None:
+            date_idx = next(
+                (i for i, p in enumerate(all_paragraphs) if p._p is date_para._p),
+                len(all_paragraphs)
+            )
+            after = [p for p in all_paragraphs[after_start:date_idx] if is_removable_blank(p)]
+        else:
+            after = [p for p in all_paragraphs[after_start:] if is_removable_blank(p)]
+
         blanks = before + after
         if not blanks:
             return
 
-        spacer = blanks[0]
-        for p in blanks[1:]:
-            Document_process.delete_paragraph(p)
+        # Conservar un spacer DESPUÉS del título (no antes)
+        # Si todos los blancos están antes del título, mover el primero después
+        spacer = None
+        for p in after:
+            spacer = p
+            break
+        if spacer is None and before:
+            spacer = before[0]
+
+        for p in blanks:
+            if p._p is not spacer._p:
+                Document_process.delete_paragraph(p)
+
+        # Mover el spacer justo después del título si no está ya ahí
+        # (no es necesario en la mayoría de los casos porque la plantilla
+        # ya tiene blancos después del título)
 
         header_end = Document_process._HEADER_END_BASE_PT
         if len(university_name) >= Document_process._HEADER_NAME_WRAP_THRESHOLD:
@@ -380,9 +449,28 @@ class Document_process:
         if has_logo:
             header_end += Document_process._HEADER_END_LOGO_EXTRA_PT
 
+        # ── Calcular la altura del spacer ──
+        # Página Carta: ~792pt de alto, márgenes de 1" = 72pt arriba/abajo
+        # → área útil ≈ 648pt.
+        # La fecha está ~36pt antes del margen inferior.
+        section = document.sections[0]
+        page_height_pt = section.page_height / 12700  # EMU → pt
+        bottom_margin_pt = section.bottom_margin / 12700
+
+        date_y_pt = page_height_pt - bottom_margin_pt - Document_process._DATE_BOTTOM_OFFSET_PT
+
+        # Como el título está en un contenedor flotante (w:framePr), el flujo
+        # normal del documento "salta" el título. Así que el spacer comienza 
+        # justo donde termina el encabezado institucional.
+        
+        # Espacio que ocupa el bloque de detalle + 2 líneas de separación (para mayor respiro visual con la fecha)
+        detail_space_pt = (detail_lines + 2) * Document_process._DETAIL_LINE_HEIGHT_PT
+        
+        # El spacer usa todo el espacio entre el encabezado institucional
+        # y la posición del bloque de detalle (arriba de la fecha).
         needed_pt = max(
             Document_process._MIN_SPACER_PT,
-            Document_process._TITLE_CLEAR_ZONE_PT - header_end,
+            date_y_pt - header_end - detail_space_pt,
         )
         spacer.paragraph_format.space_after = Pt(needed_pt)
 
@@ -764,16 +852,25 @@ class Document_process:
         title_para = Document_process._find_paragraph(document, '[title]', exact=True)
         date_para = Document_process._find_paragraph(document, '[date]')
 
+        # Contar líneas de detalle ANTES de borrar los párrafos en blanco
+        detail_lines = 0
+        if title_para is not None and date_para is not None:
+            detail_lines = Document_process._count_detail_lines(
+                document, title_para, date_para,
+            )
+
         # Recortar los párrafos en blanco que ya no cumplen ningún propósito
         # de posicionamiento (ver _trim_cover_spacers) y reservar sólo el
-        # espacio que hace falta según haya o no logo y el largo real del
-        # nombre de la universidad. Debe ir antes de llenar_campos: usa el
-        # texto vacío para detectar los blancos, y llenar_campos no los toca
-        # de todas formas.
+        # espacio que hace falta para que los campos de detalle queden
+        # justo encima de la línea de fecha. Debe ir antes de
+        # llenar_campos: usa el texto vacío para detectar los blancos.
         if title_para is not None:
             Document_process._trim_cover_spacers(
                 document, title_para,
-                has_logo=has_logo, university_name=replacements.get('[u]', ''),
+                date_para=date_para,
+                has_logo=has_logo,
+                university_name=replacements.get('[u]', ''),
+                detail_lines=detail_lines,
             )
 
         # Llenar campos de la plantilla
@@ -800,11 +897,19 @@ class Document_process:
         else:
             logger.warning('No se pudo ubicar/anclar el título en la portada')
 
-        # Línea de fecha y lugar: anclada al pie de la página, siempre en
-        # la misma posición sin importar cuánto ocupe el bloque de
-        # docente/integrantes que va justo encima.
+        # Línea de fecha y lugar: anclada a una posición Y absoluta
+        # calculada como page_height − bottom_margin − offset, de modo que
+        # quede en la última línea útil DENTRO de los márgenes. Usar una
+        # coordenada numérica (w:y) en vez de w:yAlign='bottom' corrige
+        # la diferencia entre Word y LibreOffice: ambos respetan el número,
+        # mientras que 'bottom' lo colocan en el borde físico del papel.
         if date_para is not None:
-            Document_process._anchor_paragraph_to_page(document, date_para, y_align='bottom')
+            section = document.sections[0]
+            date_y = (section.page_height - section.bottom_margin
+                      - Pt(Document_process._DATE_BOTTOM_OFFSET_PT))
+            Document_process._anchor_paragraph_to_page(
+                document, date_para, y_pos=date_y,
+            )
         else:
             logger.warning('No se pudo ubicar/anclar la línea de fecha en la portada')
 
