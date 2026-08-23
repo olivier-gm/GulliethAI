@@ -162,20 +162,21 @@
 
               <div class="field">
                 <label for="f-academico">Tipo</label>
-                <!-- Valores conservados tal cual estaban en la versión anterior
-                     para no alterar el texto que se escribe en la portada. -->
+                <!-- Las opciones reales las arma builder.js según el tipo de
+                     institución (universidad/bachillerato); esto es sólo el
+                     estado inicial para cuando JS todavía no corrió. -->
                 <select class="select" id="f-academico" name="academico">
                   <option value="">Sin especificar</option>
-                  <option value="Semestre">Grado</option>
                   <option value="Año">Año</option>
                   <option value="Semestre">Semestre</option>
                   <option value="Trimestre">Trimestre</option>
+                  <option value="Trayecto">Trayecto</option>
                 </select>
               </div>
 
               <div class="field">
                 <label for="f-seccion">Sección <span class="opt">· opcional</span></label>
-                <input class="input" type="text" id="f-seccion" name="seccion" maxlength="20" placeholder="Ej. A">
+                <input class="input" type="text" id="f-seccion" name="seccion" maxlength="6" placeholder="Ej. A">
               </div>
             </div>
           </div>
@@ -259,6 +260,16 @@
                   <label for="mode-standard"><i class="bx bx-pencil"></i> Lo escribo yo</label>
                 </div>
               </div>
+
+              <div class="seg-group">
+                <span>Secciones a incluir</span>
+                <div class="seg">
+                  <input type="checkbox" id="f-incluir-intro" name="incluir_introduccion" value="1" checked>
+                  <label for="f-incluir-intro"><i class="bx bx-align-left"></i> Introducción</label>
+                  <input type="checkbox" id="f-incluir-concl" name="incluir_conclusion" value="1" checked>
+                  <label for="f-incluir-concl"><i class="bx bx-flag"></i> Conclusión</label>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -275,15 +286,14 @@
           </div>
 
           <!-- ---- Modo manual ----
-               NOTA PARA EL DESARROLLADOR: estos campos (body, introduccion,
-               conclusion) se envían igual que antes, pero en app.py la ruta
-               /process_form los tiene comentados y siempre usa la IA.
-               Para que el modo manual tenga efecto hay que reactivar esas
-               líneas en app.py (no se tocó la lógica de generación). -->
+               Si el usuario desmarca "Introducción" o "Conclusión" arriba,
+               el campo correspondiente se oculta (ver applySections en
+               builder.js): la introducción/conclusión no se piden ni se
+               incluyen en el documento. -->
           <div class="block" id="manual-block" style="display:none;">
             <div class="block__label">Contenido escrito por ti</div>
             <div class="grid">
-              <div class="field">
+              <div class="field" id="wrap-introduccion">
                 <label for="f-introduccion">Introducción</label>
                 <textarea class="textarea" id="f-introduccion" name="introduccion"
                   placeholder="Escribe o pega aquí la introducción…"></textarea>
@@ -293,7 +303,7 @@
                 <textarea class="textarea" id="f-body" name="body" style="min-height: 200px;"
                   placeholder="Escribe o pega aquí el desarrollo del trabajo…"></textarea>
               </div>
-              <div class="field">
+              <div class="field" id="wrap-conclusion">
                 <label for="f-conclusion">Conclusión</label>
                 <textarea class="textarea" id="f-conclusion" name="conclusion"
                   placeholder="Escribe o pega aquí la conclusión…"></textarea>

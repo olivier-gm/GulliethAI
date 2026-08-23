@@ -724,12 +724,19 @@ class Document_process:
         return [b.strip() for b in re.split(r'[\r\n]+', body) if b.strip()]
 
     @staticmethod
-    def parrafos(body, document, topic, flag):
+    def parrafos(body, document, topic, flag, detect_subtitles=True):
         """Agrega una sección al documento: título, subtítulos y párrafos.
 
         El título de sección va con nivel de esquema 1 y cada subtítulo
         detectado con nivel 2, que es lo que hace que ambos aparezcan en el
         índice.
+
+        detect_subtitles=False desactiva la detección heurística de
+        subtítulos (_is_subtitle): se usa para texto escrito a mano por el
+        usuario ('lo escribo yo'), donde esa heurística tiende a marcar como
+        subtítulo cualquier línea corta suelta y el índice termina con
+        entradas falsas. Con la detección apagada, el índice sólo lista
+        Introducción, el título del trabajo y Conclusión.
         """
         if body == '':
             return
@@ -756,7 +763,7 @@ class Document_process:
             if not text:
                 continue
 
-            if Document_process._is_subtitle(block):
+            if detect_subtitles and Document_process._is_subtitle(block):
                 sp = document.add_paragraph(text)
                 try:
                     sp.style = document.styles['Heading 2']
@@ -832,12 +839,12 @@ class Document_process:
     @staticmethod
     def fill_placeholders(docx_output, template_path, template_path2, replacements,
                            introduction, essay_content, conclusion, head_title, id,
-                           university_name=''):
+                           university_name='', detect_subtitles=True):
         if id == 'bach':
             words = ['DOCENTE:', 'ALUMNOS:', 'ALUMNO:', 'MATERIA:']
         else:
             words = ['DOCENTE:', 'ALUMNOS:', 'ALUMNO:', 'SECCION:',
-                     'AÑO:', 'SEMESTRE:', 'TRIMESTRE:', 'MATERIA:']
+                     'GRADO:', 'AÑO:', 'SEMESTRE:', 'TRIMESTRE:', 'TRAYECTO:', 'MATERIA:']
 
         document = Document(template_path)
 
@@ -927,9 +934,9 @@ class Document_process:
         if conclusion != '':
             flage = True
 
-        Document_process.parrafos(introduction, document, 'Introducción', flagi)
-        Document_process.parrafos(essay_content, document, head_title, flage)
-        Document_process.parrafos(conclusion, document, 'Conclusión', False)
+        Document_process.parrafos(introduction, document, 'Introducción', flagi, detect_subtitles)
+        Document_process.parrafos(essay_content, document, head_title, flage, detect_subtitles)
+        Document_process.parrafos(conclusion, document, 'Conclusión', False, detect_subtitles)
 
         # Forzar actualización de campos (TOC) al abrir
         if has_content:

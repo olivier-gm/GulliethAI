@@ -71,20 +71,15 @@ class FormProcessor:
             return self.title
 
     def create_subtitles(self):
-        # Crear una lista con los subtítulos que no estén vacíos
+        """Devuelve la lista de subtítulos no vacíos, en orden.
+
+        El armado del texto que se le manda a Gemini (con sus comillas y
+        conectores) es responsabilidad de generate_essay_content en IA.py,
+        no de este método: aquí sólo se filtra y se entrega la lista.
+        """
         subtitles = [self.subtitle_1, self.subtitle_2, self.subtitle_3, self.subtitle_4,
                      self.subtitle_5, self.subtitle_6, self.subtitle_7, self.subtitle_8]
-
-        # Filtrar los subtítulos no vacíos
-        valid_subtitles = [subtitle for subtitle in subtitles if subtitle]
-
-        # Si hay subtítulos válidos, añadirlos entre paréntesis al título, de lo contrario solo devolver el título
-        if valid_subtitles and len(valid_subtitles) > 1:
-            return f"' y en los subtitulos '{'; '.join(valid_subtitles)}'"
-        elif valid_subtitles:
-            return f" ({valid_subtitles[0]})'"
-        else:
-            return "'"
+        return [subtitle for subtitle in subtitles if subtitle]
 
     def process(self):
         

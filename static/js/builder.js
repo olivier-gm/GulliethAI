@@ -8,7 +8,7 @@
    u, area, carrera, teacher, asignatura, seccion, periodo, academico,
    city, date, title, gblock-template-canvas-integrantes,
    input1..input8, id1..id8, subtitle_1..subtitle_8,
-   body, introduccion, conclusion.
+   body, introduccion, conclusion, incluir_introduccion, incluir_conclusion.
    ============================================================ */
 
 (function () {
@@ -182,6 +182,42 @@
     return !r || r.value === 'universidad';
   }
 
+  // El bachillerato venezolano se organiza por grado/año; la universidad,
+  // por año/semestre/trimestre/trayecto. No tiene sentido ofrecer "Grado"
+  // en universidad ni "Semestre"/"Trimestre"/"Trayecto" en bachillerato.
+  var ACADEMICO_OPTIONS = {
+    bach: [
+      { value: '', label: 'Sin especificar' },
+      { value: 'Grado', label: 'Grado' },
+      { value: 'Año', label: 'Año' }
+    ],
+    uni: [
+      { value: '', label: 'Sin especificar' },
+      { value: 'Año', label: 'Año' },
+      { value: 'Semestre', label: 'Semestre' },
+      { value: 'Trimestre', label: 'Trimestre' },
+      { value: 'Trayecto', label: 'Trayecto' }
+    ]
+  };
+
+  function applyAcademicoOptions() {
+    var sel = $('#f-academico');
+    var opts = ACADEMICO_OPTIONS[isUni() ? 'uni' : 'bach'];
+    var current = sel.value;
+
+    sel.innerHTML = '';
+    opts.forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+
+    // Si la selección anterior ya no existe en el nuevo modo (p.ej. venía
+    // de "Semestre" y se cambió a bachillerato), se vuelve a "Sin especificar".
+    sel.value = opts.some(function (o) { return o.value === current; }) ? current : '';
+  }
+
   function applyInstitute() {
     var uni = isUni();
     $('#f-u').placeholder = uni ? 'Ej. Universidad Central de Venezuela' : 'Ej. U.E. Nacional Simón Bolívar';
@@ -191,7 +227,9 @@
     setText(pv.ministerio, uni
       ? 'MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN UNIVERSITARIA'
       : 'MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN');
+    applyAcademicoOptions();
     renderHeader();
+    renderInfoBlock();
   }
 
   $$('input[name="instituto"]').forEach(function (r) {
@@ -210,6 +248,22 @@
   $$('input[name="global-mode"]').forEach(function (r) {
     r.addEventListener('change', applyMode);
   });
+
+  /* ==========================================================
+     3b. SECCIONES OPCIONALES (introducción / conclusión)
+     Los checkboxes valen tanto en modo IA (el backend no la pide) como en
+     modo manual (el campo se oculta y no se envía contenido).
+     ========================================================== */
+  var chkIntro = $('#f-incluir-intro');
+  var chkConcl = $('#f-incluir-concl');
+
+  function applySections() {
+    show($('#wrap-introduccion'), chkIntro.checked);
+    show($('#wrap-conclusion'), chkConcl.checked);
+  }
+
+  chkIntro.addEventListener('change', applySections);
+  chkConcl.addEventListener('change', applySections);
 
   /* ==========================================================
      4. TIPOGRAFÍA DE LA VISTA PREVIA
@@ -251,6 +305,41 @@
     renderStudentsPreview();
   }
 
+  // Sólo letras (con acentos/ñ) y espacios: un nombre no lleva dígitos ni símbolos.
+  var NAME_INVALID_RE = /[^A-Za-zÁÉÍÓÚáéíóúÑñÜü\s]/g;
+
+  function sanitizeName(raw) {
+    return raw.replace(NAME_INVALID_RE, '');
+  }
+
+  // Cédula: sólo dígitos y puntos, más como mucho una letra y sólo si va
+  // de primera (p.ej. "V12.345.678"). Cualquier otra letra, o una letra
+  // que no esté al inicio, se descarta en vez de rechazar todo el campo.
+  function sanitizeCedula(raw) {
+    var out = '';
+    for (var i = 0; i < raw.length; i++) {
+      var ch = raw[i];
+      if (/[A-Za-z]/.test(ch)) {
+        if (out.length === 0) { out += ch.toUpperCase(); }
+      } else if (/[0-9.]/.test(ch)) {
+        out += ch;
+      }
+    }
+    return out;
+  }
+
+  function bindSanitizer(input, sanitizeFn) {
+    input.addEventListener('input', function () {
+      var caretFromEnd = input.value.length - input.selectionEnd;
+      var clean = sanitizeFn(input.value);
+      if (clean !== input.value) {
+        input.value = clean;
+        var pos = Math.max(0, clean.length - caretFromEnd);
+        input.setSelectionRange(pos, pos);
+      }
+    });
+  }
+
   function buildStudentRow(i) {
     var row = document.createElement('div');
     row.className = 'student-row';
@@ -271,11 +360,13 @@
     ci.type = 'text';
     ci.className = 'input js-student-id';
     ci.name = 'id' + i;
-    ci.maxLength = 10;
+    ci.maxLength = 12;
     ci.inputMode = 'numeric';
     ci.placeholder = 'C.I.';
     ci.autocomplete = 'off';
 
+    bindSanitizer(name, sanitizeName);
+    bindSanitizer(ci, sanitizeCedula);
     name.addEventListener('input', renderStudentsPreview);
     ci.addEventListener('input', renderStudentsPreview);
 
@@ -660,6 +751,7 @@
      ========================================================== */
   applyInstitute();
   applyMode();
+  applySections();
   renderStudents();
   reindexTopics();
   renderHeader();

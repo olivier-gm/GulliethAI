@@ -83,7 +83,6 @@ def _with_retries(fn, *, attempts=3, base_delay=1.5):
                 time.sleep(delay)
     raise last_err
 
-
 class _FewShotPrompt:
     """Une un system_instruction fijo con ejemplos few-shot fijos (turnos con
     rol user/model reales, no el viejo formato de texto "input:"/"output:").
@@ -225,7 +224,16 @@ _essay_prompt = _FewShotPrompt(
 
 def generate_essay_content(title, subtitles):
     try:
-        user_text = f"Tema: '{title}{subtitles}"
+        # El armado sigue el mismo formato de los ejemplos few-shot (ver el
+        # caso 'ciclo de krebs' arriba): con 2+ subtítulos van en su propio
+        # bloque entrecomillado; con uno solo, entre paréntesis junto al
+        # título; sin ninguno, sólo el título.
+        if subtitles and len(subtitles) > 1:
+            user_text = f"Tema: '{title}' y en los subtitulos '{'; '.join(subtitles)}'"
+        elif subtitles:
+            user_text = f"Tema: '{title} ({subtitles[0]})'"
+        else:
+            user_text = f"Tema: '{title}'"
         text = _essay_prompt.generate(user_text, temperature=0.5, max_output_tokens=20000)
         return _clean(text)
     except Exception as e:

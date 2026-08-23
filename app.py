@@ -69,27 +69,43 @@ def process_form():
     processor = FormProcessor(form_data, 'uni')
     processor.process()
     replacements, head_title = processor.generate_replacements()
-    #introduccion = processor.introduccion
-    #body = processor.body
-    body = ''
-    if validate_titles(processor.formatted_title).startswith('TRUE'):
-        body = generate_essay_content(processor.title, processor.subtitles)
 
-    else:
+    # 'Lo escribo yo': el usuario redacta el contenido a mano en vez de
+    # pedírselo a la IA. Estos checkboxes controlan, en ambos modos, si la
+    # introducción y la conclusión se incluyen en el documento o no.
+    manual_mode = form_data.get('global-mode') == 'standard'
+    incluir_introduccion = 'incluir_introduccion' in form_data
+    incluir_conclusion = 'incluir_conclusion' in form_data
 
-        return redirect(url_for('welcome'))  # Redirect to the form if the file wasn't generated
     introduccion = ''
     conclusion = ''
-    if body != '':
-        # La introducción y la conclusión solo dependen del título y del
-        # cuerpo ya generado, no una de la otra, así que se piden en
-        # paralelo en vez de esperar una llamada tras otra a Gemini.
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            intro_future = executor.submit(generate_introduction, processor.title, body)
-            conclusion_future = executor.submit(generate_conclusion, processor.title, body)
-            introduccion = intro_future.result()
-            conclusion = conclusion_future.result()
-        #conclusion = processor.conclusion
+
+    if manual_mode:
+        body = processor.body
+        if incluir_introduccion:
+            introduccion = processor.introduccion
+        if incluir_conclusion:
+            conclusion = processor.conclusion
+    else:
+        body = ''
+        if validate_titles(processor.formatted_title).startswith('TRUE'):
+            body = generate_essay_content(processor.title, processor.subtitles)
+
+        else:
+
+            return redirect(url_for('welcome'))  # Redirect to the form if the file wasn't generated
+        if body != '':
+            # La introducción y la conclusión solo dependen del título y del
+            # cuerpo ya generado, no una de la otra, así que se piden en
+            # paralelo en vez de esperar una llamada tras otra a Gemini.
+            # Sólo se piden las que el usuario dejó activadas.
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                intro_future = executor.submit(generate_introduction, processor.title, body) if incluir_introduccion else None
+                conclusion_future = executor.submit(generate_conclusion, processor.title, body) if incluir_conclusion else None
+                if intro_future:
+                    introduccion = intro_future.result()
+                if conclusion_future:
+                    conclusion = conclusion_future.result()
 
     input_doc='input/plantilla.docx'
     input_doc2='input/plantillaempty.docx'
@@ -102,7 +118,8 @@ def process_form():
     university_name = form_data.get('u', '')
     Document_process.fill_placeholders(docx_output, input_doc, input_doc2, replacements,
                                         introduccion, body, conclusion, head_title, 'uni',
-                                        university_name=university_name)
+                                        university_name=university_name,
+                                        detect_subtitles=not manual_mode)
 
     session['file_generated'] = True
 
