@@ -32,10 +32,16 @@
         <a class="nav__link" href="{{ url_for('welcome') }}">Inicio</a>
         <a class="nav__link" href="{{ url_for('welcome') }}#como-funciona">Cómo funciona</a>
         <a class="nav__link" href="{{ url_for('welcome') }}#faq">Preguntas</a>
+        {% if current_user and current_user.is_admin %}
+        <a class="nav__link" href="{{ url_for('admin.dashboard') }}">Admin</a>
+        {% endif %}
       </nav>
 
       <div class="nav__actions">
         <span class="pill btn--nav-cta"><i class="bx bx-shape-triangle"></i> Gullieth AI</span>
+        {% if current_user %}
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('auth.logout') }}">Cerrar sesión</a>
+        {% endif %}
         <button class="nav__burger" data-burger type="button" aria-label="Abrir menú" aria-expanded="false">
           <span></span><span></span><span></span>
         </button>

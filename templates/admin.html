@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#141430">
+  <meta name="robots" content="noindex">
+  <title>Panel admin · Gullieth</title>
+
+  <link rel="icon" href="{{ url_for('static', filename='icono.jpg') }}" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+
+  <script defer src="{{ url_for('static', filename='js/ui.js') }}"></script>
+</head>
+
+<body>
+
+  <header class="nav" data-nav>
+    <div class="shell nav__inner">
+      <a href="{{ url_for('welcome') }}" class="brand">
+        <img class="brand__img" src="{{ url_for('static', filename='img/logo.png') }}" alt="Gullieth">
+        <span class="brand__name">Gulli<span>eth</span></span>
+      </a>
+      <nav class="nav__links" data-nav-links>
+        <a class="nav__link" href="{{ url_for('welcome') }}">Inicio</a>
+        <a class="nav__link" href="{{ url_for('show_form') }}">Crear documento</a>
+      </nav>
+      <div class="nav__actions">
+        <span class="pill btn--nav-cta"><i class="bx bx-shield-quarter"></i> Admin</span>
+        <button class="nav__burger" data-burger type="button" aria-label="Abrir menú" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell admin-page">
+
+    <div class="admin-head">
+      <h1>Panel admin</h1>
+      <p>Usuarios registrados, tokens de Gemini consumidos y documentos generados.</p>
+    </div>
+
+    <div class="admin-stats">
+      <div class="card admin-stat">
+        <div class="admin-stat__num">{{ stats['total_users'] }}</div>
+        <div class="admin-stat__label"><i class="bx bx-group"></i> Usuarios registrados</div>
+      </div>
+      <div class="card admin-stat">
+        <div class="admin-stat__num">{{ stats['total_documents'] }}</div>
+        <div class="admin-stat__label"><i class="bx bx-file"></i> Documentos generados</div>
+      </div>
+      <div class="card admin-stat">
+        <div class="admin-stat__num">{{ '{:,}'.format(stats['total_tokens']) }}</div>
+        <div class="admin-stat__label"><i class="bx bx-shape-triangle"></i> Tokens de Gemini usados</div>
+      </div>
+    </div>
+
+    <section class="admin-section">
+      <h2 class="admin-section__title"><i class="bx bx-group"></i> Usuarios</h2>
+      <div class="table-wrap">
+        {% if users %}
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Correo</th>
+              <th>Acceso</th>
+              <th>Plan</th>
+              <th>Documentos</th>
+              <th>Tokens usados</th>
+              <th>Registrado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u['name'] or '—' }}{% if u['is_admin'] %} <span class="badge badge--admin"><i class="bx bx-crown"></i> admin</span>{% endif %}</td>
+              <td>{{ u['email'] }}</td>
+              <td>{% if u['google_id'] %}<span class="badge badge--google"><i class="bx bxl-google"></i> Google</span>{% else %}<span class="badge badge--free">Correo</span>{% endif %}</td>
+              <td><span class="badge badge--free">{{ u['plan'] }}</span></td>
+              <td>{{ u['documents_count'] }}</td>
+              <td>{{ '{:,}'.format(u['tokens_used']) }}</td>
+              <td class="is-dim">{{ u['created_at'] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="admin-empty">Todavía no hay usuarios registrados.</div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="admin-section">
+      <h2 class="admin-section__title"><i class="bx bx-file"></i> Documentos recientes</h2>
+      <div class="table-wrap">
+        {% if documents %}
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Usuario</th>
+              <th>Tipo</th>
+              <th>Tokens</th>
+              <th>Generado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in documents %}
+            <tr>
+              <td>{{ d['title'] }}</td>
+              <td>{{ d['user_name'] or d['user_email'] }}</td>
+              <td><span class="badge badge--free">{{ 'Universitario' if d['doc_type'] == 'uni' else 'Bachillerato' }}</span></td>
+              <td>{{ '{:,}'.format(d['tokens_used']) }}</td>
+              <td class="is-dim">{{ d['created_at'] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="admin-empty">Todavía no se ha generado ningún documento.</div>
+        {% endif %}
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer__bottom" style="border: 0; padding-top: 0;">
+      <span>&copy; 2026 Gullieth. Todos los derechos reservados.</span>
+      <span>Hecho en Venezuela 🇻🇪</span>
+    </div>
+  </footer>
+
+</body>
+
+</html>

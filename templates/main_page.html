@@ -36,12 +36,23 @@
         <a class="nav__link" href="#instituciones">Instituciones</a>
         <a class="nav__link" href="#faq">Preguntas</a>
         <a class="nav__link" href="{{ url_for('show_form') }}">Crear documento</a>
+        {% if current_user and current_user.is_admin %}
+        <a class="nav__link" href="{{ url_for('admin.dashboard') }}">Admin</a>
+        {% endif %}
       </nav>
 
       <div class="nav__actions">
+        {% if current_user %}
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('auth.logout') }}">Cerrar sesión</a>
         <a class="btn btn--primary btn--sm btn--nav-cta" href="{{ url_for('show_form') }}">
+          <i class="bx bx-rocket"></i> Crear documento
+        </a>
+        {% else %}
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('auth.login') }}">Iniciar sesión</a>
+        <a class="btn btn--primary btn--sm btn--nav-cta" href="{{ url_for('auth.register') }}">
           <i class="bx bx-rocket"></i> Empezar gratis
         </a>
+        {% endif %}
         <button class="nav__burger" data-burger type="button" aria-label="Abrir menú" aria-expanded="false">
           <span></span><span></span><span></span>
         </button>
@@ -281,7 +292,8 @@
 
           <details class="faq__item">
             <summary class="faq__q">¿Necesito crear una cuenta? <i class="bx bx-plus"></i></summary>
-            <p class="faq__a">No. Entras, llenas el formulario y descargas. Sin registro y sin costo.</p>
+            <p class="faq__a">Sí, una cuenta gratuita: con tu correo o con un clic usando "Continuar con Google".
+              Una vez adentro, generas documentos sin límite y sin costo.</p>
           </details>
         </div>
       </div>

@@ -83,6 +83,28 @@ def _with_retries(fn, *, attempts=3, base_delay=1.5):
                 time.sleep(delay)
     raise last_err
 
+
+def _record_usage(usage_sink, response):
+    """Anota los tokens de una respuesta de Gemini en usage_sink (una lista).
+
+    Se pasa una lista en vez de acumular en una variable porque
+    generate_essay_content/introduccion/conclusion se piden en paralelo con
+    ThreadPoolExecutor (ver app.py): list.append es seguro entre hilos bajo
+    el GIL, así que cada llamada agrega su propio conteo sin pisar al resto.
+    usage_sink=None (el default) desactiva el conteo por completo.
+    """
+    if usage_sink is None:
+        return
+    usage = getattr(response, 'usage_metadata', None)
+    if usage is None:
+        return
+    total = getattr(usage, 'total_token_count', None)
+    if total is None:
+        total = (getattr(usage, 'prompt_token_count', 0) or 0) + \
+                (getattr(usage, 'candidates_token_count', 0) or 0)
+    usage_sink.append(total or 0)
+
+
 class _FewShotPrompt:
     """Une un system_instruction fijo con ejemplos few-shot fijos (turnos con
     rol user/model reales, no el viejo formato de texto "input:"/"output:").
@@ -162,7 +184,7 @@ class _FewShotPrompt:
             return [final_turn]
         return self.example_contents + [final_turn]
 
-    def generate(self, user_text, *, temperature, max_output_tokens):
+    def generate(self, user_text, *, temperature, max_output_tokens, usage_sink=None):
         self._ensure_cache()
 
         def _call():
@@ -186,6 +208,7 @@ class _FewShotPrompt:
                 response = _with_retries(_call)
             else:
                 raise
+        _record_usage(usage_sink, response)
         return response.text if response.text else ''
 
 
@@ -222,7 +245,7 @@ _essay_prompt = _FewShotPrompt(
 )
 
 
-def generate_essay_content(title, subtitles):
+def generate_essay_content(title, subtitles, usage_sink=None):
     try:
         # El armado sigue el mismo formato de los ejemplos few-shot (ver el
         # caso 'ciclo de krebs' arriba): con 2+ subtítulos van en su propio
@@ -234,7 +257,8 @@ def generate_essay_content(title, subtitles):
             user_text = f"Tema: '{title} ({subtitles[0]})'"
         else:
             user_text = f"Tema: '{title}'"
-        text = _essay_prompt.generate(user_text, temperature=0.5, max_output_tokens=20000)
+        text = _essay_prompt.generate(user_text, temperature=0.5, max_output_tokens=20000,
+                                       usage_sink=usage_sink)
         return _clean(text)
     except Exception as e:
         logger.error('Error generando contenido del ensayo: %s', e)
@@ -264,10 +288,11 @@ _intro_prompt = _FewShotPrompt(
 )
 
 
-def generate_introduction(title, body):
+def generate_introduction(title, body, usage_sink=None):
     try:
         user_text = f"El título del trabajo es \'{title}\' y el texto es el siguiente: \"{body}\"."
-        text = _intro_prompt.generate(user_text, temperature=0.5, max_output_tokens=5000)
+        text = _intro_prompt.generate(user_text, temperature=0.5, max_output_tokens=5000,
+                                       usage_sink=usage_sink)
         return _clean(text)
     except Exception as e:
         logger.error('Error generando introducción: %s', e)
@@ -297,10 +322,11 @@ _conclusion_prompt = _FewShotPrompt(
 )
 
 
-def generate_conclusion(title, body):
+def generate_conclusion(title, body, usage_sink=None):
     try:
         user_text = f"El título del trabajo es \'{title}\' y el texto es el siguiente: \"{body}\"."
-        text = _conclusion_prompt.generate(user_text, temperature=0.5, max_output_tokens=5000)
+        text = _conclusion_prompt.generate(user_text, temperature=0.5, max_output_tokens=5000,
+                                            usage_sink=usage_sink)
         return _clean(text)
     except Exception as e:
         logger.error('Error generando conclusión: %s', e)
@@ -311,7 +337,7 @@ def generate_conclusion(title, body):
 # VALIDACIÓN DE TÍTULOS
 # ---------------------------------------------------------------------------
 
-def validate_titles(title):
+def validate_titles(title, usage_sink=None):
     config = types.GenerateContentConfig(
         temperature=0.05,
         top_p=0.95,
@@ -332,6 +358,7 @@ def validate_titles(title):
             config=config,
             contents=[prompt],
         ))
+        _record_usage(usage_sink, response)
         raw_text = response.text if hasattr(response, 'text') and response.text else ''
         cleaned_text = _clean(raw_text)
         return cleaned_text if cleaned_text else 'FALSE'

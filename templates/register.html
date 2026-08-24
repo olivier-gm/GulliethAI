@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#141430">
+  <title>Crear cuenta · Gullieth</title>
+
+  <link rel="icon" href="{{ url_for('static', filename='icono.jpg') }}" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/form.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+
+  <script defer src="{{ url_for('static', filename='js/ui.js') }}"></script>
+</head>
+
+<body>
+
+  <header class="nav" data-nav>
+    <div class="shell nav__inner">
+      <a href="{{ url_for('welcome') }}" class="brand">
+        <img class="brand__img" src="{{ url_for('static', filename='img/logo.png') }}" alt="Gullieth">
+        <span class="brand__name">Gulli<span>eth</span></span>
+      </a>
+      <nav class="nav__links" data-nav-links>
+        <a class="nav__link" href="{{ url_for('welcome') }}">Inicio</a>
+      </nav>
+      <div class="nav__actions">
+        <a class="btn btn--ghost btn--sm btn--nav-cta" href="{{ url_for('auth.login') }}">Ya tengo cuenta</a>
+        <button class="nav__burger" data-burger type="button" aria-label="Abrir menú" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="auth">
+    <div class="auth__orb"></div>
+
+    <div class="card auth-card">
+      <div class="auth-card__head">
+        <h1 class="auth-card__title">Crea tu cuenta</h1>
+        <p class="auth-card__sub">Gratis, y genera documentos sin límite.</p>
+      </div>
+
+      {% if google_enabled %}
+      <a class="btn btn--google" href="{{ url_for('auth.google_start') }}">
+        <i class="bx bxl-google"></i> Continuar con Google
+      </a>
+      <div class="auth-divider">o con tu correo</div>
+      {% endif %}
+
+      <span class="err-msg{{ ' is-on' if error }}">{{ error or '' }}</span>
+
+      <form method="POST" action="{{ url_for('auth.register') }}" novalidate>
+        <div class="field">
+          <label for="f-name">Nombre</label>
+          <input class="input" type="text" id="f-name" name="name" maxlength="60" required
+            placeholder="Tu nombre" autocomplete="name">
+        </div>
+
+        <div class="field">
+          <label for="f-email">Correo</label>
+          <input class="input" type="email" id="f-email" name="email" required
+            placeholder="tu@correo.com" autocomplete="email">
+        </div>
+
+        <div class="field">
+          <label for="f-password">Contraseña</label>
+          <input class="input" type="password" id="f-password" name="password" required minlength="8"
+            placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--block">
+          <i class="bx bx-user-plus"></i> Crear cuenta
+        </button>
+      </form>
+
+      <p class="auth-card__foot">
+        ¿Ya tienes cuenta? <a href="{{ url_for('auth.login') }}">Inicia sesión</a>
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer__bottom" style="border: 0; padding-top: 0;">
+      <span>&copy; 2026 Gullieth. Todos los derechos reservados.</span>
+      <span>Hecho en Venezuela 🇻🇪</span>
+    </div>
+  </footer>
+
+</body>
+
+</html>

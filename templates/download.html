@@ -31,12 +31,18 @@
       <nav class="nav__links" data-nav-links>
         <a class="nav__link" href="{{ url_for('welcome') }}">Inicio</a>
         <a class="nav__link" href="{{ url_for('show_form') }}">Crear otro documento</a>
+        {% if current_user and current_user.is_admin %}
+        <a class="nav__link" href="{{ url_for('admin.dashboard') }}">Admin</a>
+        {% endif %}
       </nav>
 
       <div class="nav__actions">
         <a class="btn btn--ghost btn--sm btn--nav-cta" href="{{ url_for('show_form') }}">
           <i class="bx bx-plus"></i> Nuevo
         </a>
+        {% if current_user %}
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('auth.logout') }}">Salir</a>
+        {% endif %}
         <button class="nav__burger" data-burger type="button" aria-label="Abrir menú" aria-expanded="false">
           <span></span><span></span><span></span>
         </button>

@@ -12,3 +12,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 output/
+
+# Base de datos local (usuarios, documentos generados)
+*.db
+*.db-journal
